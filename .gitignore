@@ -1,0 +1,17 @@
+# Xcode
+DerivedData/
+DerivedDataBuild/
+*.xcuserstate
+*.xcuserdata/
+*.xccheckout
+*.xcscmblueprint
+
+# Swift / macOS
+.build/
+*.swp
+
+# OS
+.DS_Store
+
+# Home artifacts
+.home/
