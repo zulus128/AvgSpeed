@@ -38,18 +38,51 @@ struct ContentView: View {
     private var needleFraction: Double { min(max(averageSpeed / maxGaugeSpeed, 0), 1) }
     private var limitFraction: Double { min(max(limit / maxGaugeSpeed, 0), 1) }
 
-    private var verticalSpacingCoefficient: CGFloat {
-        let referenceHeight: CGFloat = 224
-        let screenHeight = WKInterfaceDevice.current().screenBounds.size.height
-        let scale = screenHeight / referenceHeight
-        return scale//.clamped(to: 0.75...1.15)
+    private struct LayoutMetrics {
+        let size: CGSize
+        let safeAreaInsets: EdgeInsets
+
+        private let referenceSize = CGSize(width: 184, height: 224)
+        private let baseGaugeSize: CGFloat = 132
+        private let maxGaugeWidthFraction: CGFloat = 0.64
+
+        var screenSize: CGSize {
+            CGSize(
+                width: size.width + safeAreaInsets.leading + safeAreaInsets.trailing,
+                height: size.height + safeAreaInsets.top + safeAreaInsets.bottom
+            )
+        }
+
+        var screenScale: CGFloat {
+            let widthScale = screenSize.width / referenceSize.width
+            let heightScale = screenSize.height / referenceSize.height
+            return min(widthScale, heightScale)
+        }
+
+        var scale: CGFloat {
+            let exponent: Double = 2.25
+            let curved = CGFloat(pow(Double(screenScale), exponent))
+            return curved.clamped(to: 0.75...1.0)
+        }
+
+        var gaugeScale: CGFloat {
+            let widthLimited = (size.width * maxGaugeWidthFraction / baseGaugeSize).clamped(to: 0.5...1.0)
+            return min(scale, widthLimited)
+        }
+
+        var headerHeight: CGFloat { 28 * scale }
+        var gaugeSize: CGFloat { baseGaugeSize * gaugeScale }
+        var gaugeTopPadding: CGFloat { 13 * gaugeScale }
+        var gaugeBottomPadding: CGFloat { 10 * gaugeScale }
+        var startStopButtonOffsetY: CGFloat { 18 * gaugeScale }
+        var unitToggleButtonOffsetY: CGFloat { 19 * gaugeScale }
+
+        var topRowAlignmentOffset: CGFloat {
+            -(safeAreaInsets.top * 0.5)
+        }
     }
 
-    private func vSpace(_ value: CGFloat) -> CGFloat {
-        value * verticalSpacingCoefficient
-    }
-
-    private var headerBar: some View {
+    private func headerBar(height: CGFloat) -> some View {
         GeometryReader { proxy in
             let spacing: CGFloat = 0
             let limitWidth: CGFloat = 68
@@ -68,62 +101,116 @@ struct ContentView: View {
                     .frame(width: timeReservedWidth, height: 1)
                     .allowsHitTesting(false)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         }
-        .frame(height: 28)
+        .frame(height: height)
     }
 
+#if DEBUG
+    private func debugPrintLayout(_ metrics: LayoutMetrics, event: String) {
+        func f(_ value: CGFloat) -> String { String(format: "%.2f", Double(value)) }
+        func sizeString(_ size: CGSize) -> String { "\(f(size.width))×\(f(size.height))" }
+
+        func insetsString(_ insets: EdgeInsets) -> String {
+            "t:\(f(insets.top)) l:\(f(insets.leading)) b:\(f(insets.bottom)) r:\(f(insets.trailing))"
+        }
+
+        let gaugeSize = metrics.gaugeSize
+        let strokeWidth = gaugeSize * 10 / 132
+        let needleWidth = gaugeSize * 3 / 132
+        let needleHeight = gaugeSize * 56 / 132
+        let hubSize = gaugeSize * 14 / 132
+        let speedFontSize = gaugeSize * 42 / 132
+
+        print(
+            """
+            [Layout:\(event)]
+              safeAreaSize: \(sizeString(metrics.size))
+              screenSize: \(sizeString(metrics.screenSize))
+              safeArea: \(insetsString(metrics.safeAreaInsets))
+              screenScale: \(f(metrics.screenScale))
+              scale: \(f(metrics.scale))
+              gaugeScale: \(f(metrics.gaugeScale))
+              headerHeight: \(f(metrics.headerHeight))
+              gaugeSize: \(f(gaugeSize)) (radius=\(f(gaugeSize / 2)))
+              gaugeStrokeWidth: \(f(strokeWidth))
+              gaugeNeedle: w=\(f(needleWidth)) h=\(f(needleHeight))
+              gaugeHubSize: \(f(hubSize))
+              gaugeSpeedFont: \(f(speedFontSize))
+              gaugePaddings: top=\(f(metrics.gaugeTopPadding)) bottom=\(f(metrics.gaugeBottomPadding))
+              buttonOffsets: startStop=\(f(metrics.startStopButtonOffsetY)) unitToggle=\(f(metrics.unitToggleButtonOffsetY))
+              topRowOffset: \(f(metrics.topRowAlignmentOffset))
+            """
+        )
+    }
+#endif
+
     var body: some View {
-        ZStack {
-            LinearGradient(
-                colors: [Color.black, Color.blue.opacity(0.25)],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .ignoresSafeArea()
+        GeometryReader { proxy in
+            let metrics = LayoutMetrics(size: proxy.size, safeAreaInsets: proxy.safeAreaInsets)
 
-            VStack {
-                headerBar
+            ZStack {
+                LinearGradient(
+                    colors: [Color.black, Color.blue.opacity(0.25)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .ignoresSafeArea()
 
-                ZStack {
-                    SpeedGauge(
-                        limitFraction: limitFraction,
-                        needleFraction: needleFraction,
-                        speed: averageSpeed,
-                        unitLabel: speedUnit.speedLabel
-                    )
-                        .frame(maxWidth: .infinity, alignment: .center)
-                        .overlay(alignment: .bottomLeading) {
-                            startStopButton
-                                .padding(.leading, 6)
-                                .offset(y: vSpace(18))
-                        }
-                        .overlay(alignment: .bottomTrailing) {
-                            unitToggleButton
-                                .padding(.trailing, 2)
-                                .offset(y: vSpace(19))
-                        }
-                }
-                .frame(height: 132)
-                .padding(.top, vSpace(13))
-                .padding(.bottom, vSpace(10))
+                VStack {
+                    headerBar(height: metrics.headerHeight)
 
-                Text(String(format: "%.2f %@", distance, speedUnit.distanceLabel))
-                    .font(.caption2)
-                    .foregroundStyle(.white.opacity(0.75))
-                    .monospacedDigit()
-                    .padding(.bottom, 0)
+                    ZStack {
+                        SpeedGauge(
+                            limitFraction: limitFraction,
+                            needleFraction: needleFraction,
+                            speed: averageSpeed,
+                            unitLabel: speedUnit.speedLabel,
+                            size: metrics.gaugeSize
+                        )
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            .overlay(alignment: .bottomLeading) {
+                                startStopButton
+                                    .padding(.leading, 6)
+                                    .offset(y: metrics.startStopButtonOffsetY)
+                            }
+                            .overlay(alignment: .bottomTrailing) {
+                                unitToggleButton
+                                    .padding(.trailing, 2)
+                                    .offset(y: metrics.unitToggleButtonOffsetY)
+                            }
+                    }
+                    .frame(height: metrics.gaugeSize)
+                    .padding(.top, metrics.gaugeTopPadding)
+                    .padding(.bottom, metrics.gaugeBottomPadding)
 
-                if let status = tracker.statusMessage {
-                    Text(status)
+                    Text(String(format: "%.2f %@", distance, speedUnit.distanceLabel))
                         .font(.caption2)
-                        .foregroundStyle(.yellow)
-                        .multilineTextAlignment(.center)
-                        .lineLimit(2)
-                        .minimumScaleFactor(0.75)
+                        .foregroundStyle(.white.opacity(0.75))
+                        .monospacedDigit()
+                        .padding(.bottom, 0)
+
+                    if let status = tracker.statusMessage {
+                        Text(status)
+                            .font(.caption2)
+                            .foregroundStyle(.yellow)
+                            .multilineTextAlignment(.center)
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.75)
+                    }
                 }
+                .padding(.horizontal, 6)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .offset(y: metrics.topRowAlignmentOffset)
             }
-            .padding(.horizontal, 6)
-            .offset(y: -vSpace(10))
+#if DEBUG
+            .onAppear {
+                debugPrintLayout(metrics, event: "onAppear")
+            }
+            .onChange(of: proxy.size) { _, _ in
+                debugPrintLayout(LayoutMetrics(size: proxy.size, safeAreaInsets: proxy.safeAreaInsets), event: "sizeChanged")
+            }
+#endif
         }
         .onAppear {
             tracker.prepare()
@@ -316,6 +403,7 @@ private struct SpeedGauge: View {
     let needleFraction: Double
     let speed: Double
     let unitLabel: String
+    let size: CGFloat
 
     private var dynamicGradient: AngularGradient {
         let clampedLimit = limitFraction.clamped(to: 0...1)
@@ -337,31 +425,37 @@ private struct SpeedGauge: View {
     }
 
     var body: some View {
+        let strokeWidth = size * 10 / 132
+        let needleWidth = size * 3 / 132
+        let needleHeight = size * 56 / 132
+        let hubSize = size * 14 / 132
+        let speedFontSize = size * 42 / 132
+
         ZStack {
             Circle()
-                .stroke(Color.white.opacity(0.08), lineWidth: 10)
+                .stroke(Color.white.opacity(0.08), lineWidth: strokeWidth)
 
             Circle()
-                .stroke(style: StrokeStyle(lineWidth: 10, lineCap: .round))
+                .stroke(style: StrokeStyle(lineWidth: strokeWidth, lineCap: .round))
                 .foregroundStyle(dynamicGradient)
                 .opacity(0.9)
 
             Capsule()
                 .fill(.white.opacity(0.65))
-                .frame(width: 3, height: 56)
-                .offset(y: -28)
+                .frame(width: needleWidth, height: needleHeight)
+                .offset(y: -(needleHeight / 2))
                 .rotationEffect(.degrees(needleFraction.clamped(to: 0...1) * 360))
                 .shadow(color: .white.opacity(0.25), radius: 1)
                 .animation(.easeInOut(duration: 0.2), value: needleFraction)
 
             Circle()
                 .fill(.black.opacity(0.85))
-                .frame(width: 14, height: 14)
+                .frame(width: hubSize, height: hubSize)
                 .overlay(Circle().stroke(Color.white.opacity(0.25), lineWidth: 1))
 
             VStack(spacing: 0) {
                 Text(speed, format: .number.precision(.fractionLength(1)))
-                    .font(.system(size: 42, weight: .bold, design: .rounded))
+                    .font(.system(size: speedFontSize, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
                     .monospacedDigit()
                     .minimumScaleFactor(0.5)
@@ -374,7 +468,7 @@ private struct SpeedGauge: View {
                     .foregroundStyle(.white.opacity(0.75))
             }
         }
-        .frame(width: 132, height: 132)
+        .frame(width: size, height: size)
     }
 }
 
