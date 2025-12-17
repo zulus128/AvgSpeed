@@ -31,6 +31,12 @@ final class SpeedTracker: NSObject, ObservableObject {
     @Published private(set) var authorizationStatus: CLAuthorizationStatus = .notDetermined
     @Published var statusMessage: String?
 
+#if DEBUG
+    @Published private(set) var isSimulating = false
+    private var simulationStartDate: Date?
+    private var lastSimulationTick: Date?
+#endif
+
     private let locationManager = CLLocationManager()
     private let workoutManager = WorkoutManager()
     private var lastLocation: CLLocation?
@@ -38,8 +44,6 @@ final class SpeedTracker: NSObject, ObservableObject {
     private var startDate: Date?
     private var timer: Timer?
     private var pendingStartAfterAuth = false
-    private var lastComplicationPush: Double = 0
-    private var lastComplicationUpdateTime: TimeInterval = 0
 
     private let startupWarmupDuration: TimeInterval = 2
     private let maxAcceptedLocationAge: TimeInterval = 10
@@ -57,7 +61,8 @@ final class SpeedTracker: NSObject, ObservableObject {
         workoutManager.onEnded = { [weak self] error in
             guard let self else { return }
             if let error {
-                statusMessage = error.localizedDescription
+                print("[SpeedTracker] Workout ended with error: \(error.localizedDescription)")
+                statusMessage = nil
             }
             if isTracking || isStarting {
                 stopTracking(reason: .workoutEnded)
@@ -100,7 +105,8 @@ final class SpeedTracker: NSObject, ObservableObject {
 
     private func startTrackingAfterLocationCheck(servicesEnabled: Bool, status: CLAuthorizationStatus) {
         guard servicesEnabled else {
-            statusMessage = "Location services disabled"
+            print("[SpeedTracker] Location services disabled")
+            statusMessage = nil
             return
         }
 
@@ -113,7 +119,8 @@ final class SpeedTracker: NSObject, ObservableObject {
         }
 
         guard authorizationStatus == .authorizedWhenInUse || authorizationStatus == .authorizedAlways else {
-            statusMessage = "Enable location in Settings"
+            print("[SpeedTracker] Location permission not granted: \(authorizationStatus)")
+            statusMessage = nil
             stopTracking(reason: .permission)
             return
         }
@@ -137,17 +144,18 @@ final class SpeedTracker: NSObject, ObservableObject {
                 isStarting = false
                 isTracking = true
                 statusMessage = "Tracking…"
-                ComplicationManager.shared.pushState(averageSpeedKmh: averageSpeedKmh, isRunning: true)
+                ComplicationManager.shared.pushState(averageSpeedKmh: averageSpeedKmh, isRunning: true, forceReload: true)
             } catch {
                 guard isStarting else { return }
+                print("[SpeedTracker] Workout start failed: \(error.localizedDescription)")
                 startDate = Date()
                 startElapsedTimer()
                 ignoreLocationUpdatesUntil = Date().addingTimeInterval(startupWarmupDuration)
                 locationManager.startUpdatingLocation()
                 isStarting = false
                 isTracking = true
-                statusMessage = "Tracking without workout: \(error.localizedDescription)"
-                ComplicationManager.shared.pushState(averageSpeedKmh: averageSpeedKmh, isRunning: true)
+                statusMessage = nil
+                ComplicationManager.shared.pushState(averageSpeedKmh: averageSpeedKmh, isRunning: true, forceReload: true)
             }
         }
     }
@@ -160,7 +168,12 @@ final class SpeedTracker: NSObject, ObservableObject {
         isStarting = false
         startDate = nil
         workoutManager.stop()
-        ComplicationManager.shared.pushState(averageSpeedKmh: averageSpeedKmh, isRunning: false)
+#if DEBUG
+        isSimulating = false
+        simulationStartDate = nil
+        lastSimulationTick = nil
+#endif
+        ComplicationManager.shared.pushState(averageSpeedKmh: averageSpeedKmh, isRunning: false, forceReload: true)
 
         switch reason {
         case .complication:
@@ -181,6 +194,78 @@ final class SpeedTracker: NSObject, ObservableObject {
 
 #if DEBUG
 extension SpeedTracker {
+    func toggleDemoSimulation() {
+        if isSimulating {
+            stopTracking(reason: .user)
+            return
+        }
+
+        guard !isTracking, !isStarting else {
+            print("[SpeedTracker] Demo simulation ignored (already tracking)")
+            return
+        }
+
+        startSimulatedTracking()
+    }
+
+    private func startSimulatedTracking() {
+        resetMetrics()
+        statusMessage = nil
+        locationManager.stopUpdatingLocation()
+        workoutManager.stop()
+
+        let now = Date()
+        startDate = now
+        simulationStartDate = now
+        lastSimulationTick = now
+
+        isSimulating = true
+        isTracking = true
+        isStarting = false
+        startElapsedTimer()
+
+        print("[SpeedTracker] Demo simulation started")
+        ComplicationManager.shared.pushState(averageSpeedKmh: averageSpeedKmh, isRunning: true, forceReload: true)
+    }
+
+    private func tickSimulatedMotion(now: Date) {
+        guard isSimulating, let simulationStartDate else { return }
+        guard let lastTick = lastSimulationTick else {
+            lastSimulationTick = now
+            return
+        }
+
+        let dt = now.timeIntervalSince(lastTick)
+        guard dt > 0 else { return }
+
+        let t = now.timeIntervalSince(simulationStartDate)
+        let cycle: TimeInterval = 300
+        let baseSpeedKmh: Double = 18
+        let amplitudeKmh: Double = 10
+
+        var simulatedSpeedKmh = baseSpeedKmh + amplitudeKmh * sin((t / cycle) * 2 * .pi)
+
+        let stopCycle: TimeInterval = 90
+        if t >= 30, (t.truncatingRemainder(dividingBy: stopCycle)) < 8 {
+            simulatedSpeedKmh = 0
+        }
+
+        simulatedSpeedKmh = min(max(simulatedSpeedKmh, 0), 40)
+        currentSpeedKmh = simulatedSpeedKmh
+
+        totalDistance += (simulatedSpeedKmh / 3.6) * dt
+        distanceKm = totalDistance / 1000
+
+        if elapsed > 0 {
+            averageSpeedKmh = (totalDistance / elapsed) * 3.6
+        } else {
+            averageSpeedKmh = 0
+        }
+
+        lastSimulationTick = now
+        pushToComplicationIfNeeded()
+    }
+
     static var previewModel: SpeedTracker {
         let tracker = SpeedTracker.shared
         tracker.isTracking = true
@@ -211,8 +296,6 @@ private extension SpeedTracker {
         elapsed = 0
         lastLocation = nil
         recentLocations.removeAll()
-        lastComplicationPush = 0
-        lastComplicationUpdateTime = 0
         startDate = nil
         ignoreLocationUpdatesUntil = nil
     }
@@ -221,7 +304,11 @@ private extension SpeedTracker {
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             guard let self, let startDate else { return }
-            elapsed = Date().timeIntervalSince(startDate)
+            let now = Date()
+            elapsed = now.timeIntervalSince(startDate)
+#if DEBUG
+            tickSimulatedMotion(now: now)
+#endif
         }
     }
 
@@ -284,14 +371,8 @@ private extension SpeedTracker {
     }
 
     func pushToComplicationIfNeeded() {
-        // Avoid spamming ClockKit; only reload when the value changes meaningfully.
-        let now = Date().timeIntervalSince1970
-        let delta = abs(averageSpeedKmh - lastComplicationPush)
-        if delta >= 0.5 || (delta >= 0.1 && (now - lastComplicationUpdateTime) >= 10) {
-            lastComplicationPush = averageSpeedKmh
-            lastComplicationUpdateTime = now
-            ComplicationManager.shared.pushState(averageSpeedKmh: averageSpeedKmh, isRunning: true)
-        }
+        // Always store the latest state; ComplicationManager throttles reloadTimeline.
+        ComplicationManager.shared.pushState(averageSpeedKmh: averageSpeedKmh, isRunning: true)
     }
 }
 
@@ -316,9 +397,29 @@ extension SpeedTracker: CLLocationManagerDelegate {
     }
 
     nonisolated func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        let nsError = error as NSError
         Task { @MainActor in
-            statusMessage = "Location error: \(error.localizedDescription)"
-            stopTracking(reason: .permission)
+            let prefix = "[SpeedTracker] Location error: \(nsError.domain) \(nsError.code) – \(nsError.localizedDescription)"
+
+            if nsError.domain == kCLErrorDomain, let code = CLError.Code(rawValue: nsError.code) {
+                switch code {
+                case .locationUnknown:
+                    // Temporary condition (GPS acquiring, poor signal, indoors). Keep tracking.
+                    print("\(prefix) (locationUnknown; will keep trying)")
+                    return
+                case .denied:
+                    print("\(prefix) (denied)")
+                    statusMessage = nil
+                    stopTracking(reason: .permission)
+                    return
+                default:
+                    break
+                }
+            }
+
+            // For other errors, log but don't stop; CoreLocation may recover on its own.
+            print(prefix)
+            statusMessage = nil
         }
     }
 }

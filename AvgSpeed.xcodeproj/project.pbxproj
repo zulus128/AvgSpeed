@@ -316,24 +316,16 @@
 		};
 		7E37A3F72EF0A99500E1932B /* Debug */ = {
 			isa = XCBuildConfiguration;
-				buildSettings = {
-					ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-					ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-					CODE_SIGN_ENTITLEMENTS = "AvgSpeed Watch App/AvgSpeed Watch App.entitlements";
-					CODE_SIGN_STYLE = Automatic;
-					CURRENT_PROJECT_VERSION = 1;
-					DEVELOPMENT_TEAM = 7TTF49AXF6;
-					ENABLE_PREVIEWS = YES;
-					GENERATE_INFOPLIST_FILE = YES;
-					INFOPLIST_KEY_CFBundleDisplayName = AvgSpeed;
-					INFOPLIST_KEY_CLKComplicationPrincipalClass = "$(PRODUCT_MODULE_NAME).ComplicationController";
-					INFOPLIST_KEY_CLKComplicationSupportedFamilies = "CLKComplicationFamilyModularSmall CLKComplicationFamilyUtilitarianSmall CLKComplicationFamilyUtilitarianLarge CLKComplicationFamilyCircularSmall CLKComplicationFamilyExtraLarge CLKComplicationFamilyGraphicCircular CLKComplicationFamilyGraphicCorner CLKComplicationFamilyGraphicRectangular";
-					INFOPLIST_KEY_NSHealthShareUsageDescription = "We use Health to run a workout session that keeps speed tracking running in the background. The workout is not saved to Health.";
-					INFOPLIST_KEY_NSHealthUpdateUsageDescription = "We use Health to run a workout session that keeps speed tracking running in the background. The workout is not saved to Health.";
-					INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "We use your location to calculate average speed.";
-					INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
-					INFOPLIST_KEY_WKBackgroundModes = "workout-processing";
-					INFOPLIST_KEY_WKWatchOnly = YES;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "AvgSpeed Watch App/AvgSpeed Watch App.entitlements";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 7TTF49AXF6;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+						INFOPLIST_FILE = "AvgSpeed Watch App-Info.plist";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -356,24 +348,16 @@
 		};
 		7E37A3F82EF0A99500E1932B /* Release */ = {
 			isa = XCBuildConfiguration;
-				buildSettings = {
-					ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-					ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-					CODE_SIGN_ENTITLEMENTS = "AvgSpeed Watch App/AvgSpeed Watch App.entitlements";
-					CODE_SIGN_STYLE = Automatic;
-					CURRENT_PROJECT_VERSION = 1;
-					DEVELOPMENT_TEAM = 7TTF49AXF6;
-					ENABLE_PREVIEWS = YES;
-					GENERATE_INFOPLIST_FILE = YES;
-					INFOPLIST_KEY_CFBundleDisplayName = AvgSpeed;
-					INFOPLIST_KEY_CLKComplicationPrincipalClass = "$(PRODUCT_MODULE_NAME).ComplicationController";
-					INFOPLIST_KEY_CLKComplicationSupportedFamilies = "CLKComplicationFamilyModularSmall CLKComplicationFamilyUtilitarianSmall CLKComplicationFamilyUtilitarianLarge CLKComplicationFamilyCircularSmall CLKComplicationFamilyExtraLarge CLKComplicationFamilyGraphicCircular CLKComplicationFamilyGraphicCorner CLKComplicationFamilyGraphicRectangular";
-					INFOPLIST_KEY_NSHealthShareUsageDescription = "We use Health to run a workout session that keeps speed tracking running in the background. The workout is not saved to Health.";
-					INFOPLIST_KEY_NSHealthUpdateUsageDescription = "We use Health to run a workout session that keeps speed tracking running in the background. The workout is not saved to Health.";
-					INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "We use your location to calculate average speed.";
-					INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
-					INFOPLIST_KEY_WKBackgroundModes = "workout-processing";
-					INFOPLIST_KEY_WKWatchOnly = YES;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "AvgSpeed Watch App/AvgSpeed Watch App.entitlements";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 7TTF49AXF6;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+						INFOPLIST_FILE = "AvgSpeed Watch App-Info.plist";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",

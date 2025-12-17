@@ -11,8 +11,14 @@ import WatchKit
 
 @main
 struct AvgSpeed_Watch_AppApp: App {
-    @WKExtensionDelegateAdaptor(ExtensionDelegate.self) var extensionDelegate
+    @WKApplicationDelegateAdaptor(ExtensionDelegate.self) var extensionDelegate
     @StateObject private var tracker = SpeedTracker.shared
+
+    init() {
+        #if DEBUG
+        debugPrintComplicationRegistration()
+        #endif
+    }
 
     var body: some Scene {
         WindowGroup {
@@ -22,7 +28,19 @@ struct AvgSpeed_Watch_AppApp: App {
     }
 }
 
-final class ExtensionDelegate: NSObject, WKExtensionDelegate {
+#if DEBUG
+private func debugPrintComplicationRegistration() {
+    let bundle = Bundle.main
+    let principal = (bundle.object(forInfoDictionaryKey: "CLKComplicationPrincipalClass") as? String) ?? "nil"
+    let families = bundle.object(forInfoDictionaryKey: "CLKComplicationSupportedFamilies") ?? "nil"
+    print("[Complications:Bundle]")
+    print("  bundleId: \(bundle.bundleIdentifier ?? "nil")")
+    print("  principal: \(principal)")
+    print("  families: \(families)")
+}
+#endif
+
+final class ExtensionDelegate: NSObject, WKApplicationDelegate {
     func handle(_ userActivity: NSUserActivity) {
         guard userActivity.userInfo?[CLKLaunchedTimelineEntryDateKey] != nil else { return }
         Task { @MainActor in

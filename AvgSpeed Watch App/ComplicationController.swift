@@ -9,6 +9,7 @@ import ClockKit
 
 final class ComplicationController: NSObject, CLKComplicationDataSource {
     private let supportedFamilies: [CLKComplicationFamily] = [
+        .graphicBezel,
         .graphicRectangular,
         .graphicCircular,
         .graphicCorner,
@@ -16,7 +17,8 @@ final class ComplicationController: NSObject, CLKComplicationDataSource {
         .utilitarianLarge,
         .circularSmall,
         .extraLarge,
-        .modularSmall
+        .modularSmall,
+        .modularLarge
     ]
 
     func getComplicationDescriptors(handler: @escaping ([CLKComplicationDescriptor]) -> Void) {
@@ -72,6 +74,11 @@ private extension ComplicationController {
             template.line1TextProvider = CLKSimpleTextProvider(text: "Avg")
             template.line2TextProvider = CLKSimpleTextProvider(text: text)
             return template
+        case .modularLarge:
+            let template = CLKComplicationTemplateModularLargeStandardBody()
+            template.headerTextProvider = CLKSimpleTextProvider(text: "Average Speed")
+            template.body1TextProvider = CLKSimpleTextProvider(text: isRunning ? "\(text) km/h" : "Stopped")
+            return template
         case .utilitarianSmall:
             let template = CLKComplicationTemplateUtilitarianSmallFlat()
             template.textProvider = CLKSimpleTextProvider(text: "Avg \(text)")
@@ -97,8 +104,18 @@ private extension ComplicationController {
         case .graphicCorner:
             return CLKComplicationTemplateGraphicCornerGaugeText(
                 gaugeProvider: CLKSimpleGaugeProvider(style: .ring, gaugeColor: .cyan, fillFraction: isRunning ? gaugeFill(for: speed) : 0),
-                outerTextProvider: CLKSimpleTextProvider(text: isRunning ? "Avg \(text)" : "Avg —")
+                outerTextProvider: CLKSimpleTextProvider(text: isRunning ? text : "—")
             )
+        case .graphicBezel:
+            let circular = CLKComplicationTemplateGraphicCircularOpenGaugeSimpleText(
+                gaugeProvider: CLKSimpleGaugeProvider(style: .ring, gaugeColor: .cyan, fillFraction: isRunning ? gaugeFill(for: speed) : 0),
+                bottomTextProvider: CLKSimpleTextProvider(text: "Avg"),
+                centerTextProvider: CLKSimpleTextProvider(text: text)
+            )
+            let template = CLKComplicationTemplateGraphicBezelCircularText()
+            template.circularTemplate = circular
+            template.textProvider = CLKSimpleTextProvider(text: isRunning ? "Avg \(text) km/h" : "Avg —")
+            return template
         case .graphicRectangular:
             return CLKComplicationTemplateGraphicRectangularStandardBody(
                 headerTextProvider: CLKSimpleTextProvider(text: "Average Speed"),

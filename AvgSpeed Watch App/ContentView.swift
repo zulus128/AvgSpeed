@@ -189,15 +189,13 @@ struct ContentView: View {
                         .foregroundStyle(.white.opacity(0.75))
                         .monospacedDigit()
                         .padding(.bottom, 0)
+#if DEBUG
+                        .onLongPressGesture(minimumDuration: 0.8) {
+                            tracker.toggleDemoSimulation()
+                            WKInterfaceDevice.current().play(.click)
+                        }
+#endif
 
-                    if let status = tracker.statusMessage {
-                        Text(status)
-                            .font(.caption2)
-                            .foregroundStyle(.yellow)
-                            .multilineTextAlignment(.center)
-                            .lineLimit(2)
-                            .minimumScaleFactor(0.75)
-                    }
                 }
                 .padding(.horizontal, 6)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)

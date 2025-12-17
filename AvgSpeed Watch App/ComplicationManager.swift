@@ -15,6 +15,9 @@ final class ComplicationManager {
     private let averageKey = "latestAverageSpeedKmh"
     private let runningKey = "isTracking"
     private let updatedAtKey = "avgSpeedUpdatedAt"
+    private let lastReloadAtKey = "avgSpeedLastComplicationReloadAt"
+
+    private let reloadInterval: TimeInterval = 60
 
     private init() {}
 
@@ -22,11 +25,17 @@ final class ComplicationManager {
         pushState(averageSpeedKmh: speedKmh, isRunning: true)
     }
 
-    func pushState(averageSpeedKmh speedKmh: Double, isRunning: Bool) {
+    func pushState(averageSpeedKmh speedKmh: Double, isRunning: Bool, forceReload: Bool = false) {
         defaults.set(speedKmh, forKey: averageKey)
         defaults.set(isRunning, forKey: runningKey)
-        defaults.set(Date().timeIntervalSince1970, forKey: updatedAtKey)
-        reloadAllComplications()
+        let now = Date().timeIntervalSince1970
+        defaults.set(now, forKey: updatedAtKey)
+
+        let lastReloadAt = defaults.double(forKey: lastReloadAtKey)
+        if forceReload || (now - lastReloadAt) >= reloadInterval {
+            defaults.set(now, forKey: lastReloadAtKey)
+            reloadAllComplications()
+        }
     }
 
     func cachedAverageSpeed() -> Double {
