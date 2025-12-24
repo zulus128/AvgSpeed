@@ -22,6 +22,8 @@ struct ContentView: View {
 
     private var limit: Double { max(speedUnit.speed(fromKmh: speedLimitKmh), 1) }
     private var averageSpeed: Double { max(speedUnit.speed(fromKmh: tracker.averageSpeedKmh), 0) }
+    private var currentSpeed: Double { max(speedUnit.speed(fromKmh: tracker.currentSpeedKmh), 0) }
+    // private var gpsSpeed: Double { max(speedUnit.speed(fromKmh: tracker.gpsSpeedKmh), 0) }
     private var distance: Double { max(speedUnit.distance(fromKm: tracker.distanceKm), 0) }
 
     private var crownLimitRange: ClosedRange<Double> {
@@ -184,16 +186,40 @@ struct ContentView: View {
                     .padding(.top, metrics.gaugeTopPadding)
                     .padding(.bottom, metrics.gaugeBottomPadding)
 
-                    Text(String(format: "%.2f %@", distance, speedUnit.distanceLabel))
-                        .font(.caption2)
-                        .foregroundStyle(.white.opacity(0.75))
-                        .monospacedDigit()
-                        .padding(.bottom, 0)
-#if DEBUG
-                        .onLongPressGesture(minimumDuration: 0.8) {
-                            tracker.toggleDemoSimulation()
-                            WKInterfaceDevice.current().play(.click)
+                    VStack(spacing: 2) {
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            Spacer(minLength: 0)
+                            Text("\(currentSpeed, format: .number.precision(.fractionLength(1))) \(speedUnit.speedLabel)")
+                                .font(.caption2)
+                                .foregroundStyle(.white.opacity(0.85))
+                                .monospacedDigit()
+                                .contentTransition(.numericText())
+                                .animation(.easeInOut(duration: 0.2), value: currentSpeed)
+
+                            Spacer(minLength: 0)
+
+                            Text(String(format: "%.2f %@", distance, speedUnit.distanceLabel))
+                                .font(.caption2)
+                                .foregroundStyle(.white.opacity(0.75))
+                                .monospacedDigit()
+                            Spacer(minLength: 0)
                         }
+
+                        /*
+                        Text("GPS \(gpsSpeed, format: .number.precision(.fractionLength(1))) \(speedUnit.speedLabel)")
+                            .font(.caption2)
+                            .foregroundStyle(.white.opacity(0.6))
+                            .monospacedDigit()
+                            .contentTransition(.numericText())
+                            .animation(.easeInOut(duration: 0.2), value: gpsSpeed)
+                        */
+                    }
+                    .padding(.bottom, 0)
+#if DEBUG
+                    .onLongPressGesture(minimumDuration: 0.8) {
+                        tracker.toggleDemoSimulation()
+                        WKInterfaceDevice.current().play(.click)
+                    }
 #endif
 
                 }

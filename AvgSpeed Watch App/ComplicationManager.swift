@@ -17,7 +17,7 @@ final class ComplicationManager {
     private let updatedAtKey = "avgSpeedUpdatedAt"
     private let lastReloadAtKey = "avgSpeedLastComplicationReloadAt"
 
-    private let reloadInterval: TimeInterval = 60
+    private let reloadInterval: TimeInterval = 300
 
     private init() {}
 

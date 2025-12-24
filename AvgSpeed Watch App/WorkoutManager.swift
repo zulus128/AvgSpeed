@@ -42,6 +42,10 @@ final class WorkoutManager: NSObject {
 
     var onEnded: ((Error?) -> Void)?
 
+    var hasSession: Bool {
+        session != nil
+    }
+
     var isRunning: Bool {
         session?.state == .running
     }
@@ -54,6 +58,12 @@ final class WorkoutManager: NSObject {
 #if targetEnvironment(simulator)
         throw WorkoutError.liveWorkoutUnavailable
 #endif
+        if let session {
+            if session.state != .ended {
+                throw WorkoutError.anotherWorkoutAlreadyRunning
+            }
+            self.session = nil
+        }
 
         try await requestAuthorizationIfNeeded()
 
@@ -80,8 +90,12 @@ final class WorkoutManager: NSObject {
     }
 
     func stop() {
-        session?.end()
-        session = nil
+        guard let session else { return }
+        if session.state == .ended {
+            self.session = nil
+            return
+        }
+        session.end()
     }
 }
 
@@ -142,6 +156,8 @@ extension WorkoutManager: HKWorkoutSessionDelegate {
     nonisolated func workoutSession(_ workoutSession: HKWorkoutSession, didChangeTo toState: HKWorkoutSessionState, from fromState: HKWorkoutSessionState, date: Date) {
         if toState == .ended {
             Task { @MainActor in
+                guard workoutSession === session else { return }
+                session = nil
                 onEnded?(nil)
             }
         }
@@ -149,6 +165,8 @@ extension WorkoutManager: HKWorkoutSessionDelegate {
 
     nonisolated func workoutSession(_ workoutSession: HKWorkoutSession, didFailWithError error: Error) {
         Task { @MainActor in
+            guard workoutSession === session else { return }
+            session = nil
             onEnded?(error)
         }
     }
