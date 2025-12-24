@@ -18,6 +18,8 @@ struct ContentView: View {
     @State private var crownLimit: Double = 10
     @FocusState private var isLimitCrownFocused: Bool
 
+    private let buttonHitTarget: CGFloat = 48
+
     private var speedUnit: SpeedUnit { SpeedUnit(rawValue: speedUnitRaw) ?? .kmh }
 
     private var limit: Double { max(speedUnit.speed(fromKmh: speedLimitKmh), 1) }
@@ -272,17 +274,21 @@ struct ContentView: View {
 
     private var unitToggleButton: some View {
         Button(action: toggleUnit) {
-            Text(speedUnit.shortLabel)
-                .font(.system(size: 14, weight: .semibold, design: .rounded))
-                .foregroundStyle(.white)
-                .monospacedDigit()
-                .lineLimit(1)
-                .minimumScaleFactor(0.6)
-                .frame(width: 32, height: 32)
-                .background(.white.opacity(0.14))
-                .clipShape(Circle())
-                .overlay(Circle().stroke(.white.opacity(0.14), lineWidth: 1))
-                .contentShape(Circle())
+            ZStack(alignment: .bottomTrailing) {
+                Color.clear
+                    .frame(width: buttonHitTarget, height: buttonHitTarget)
+                Text(speedUnit.shortLabel)
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+                    .frame(width: 32, height: 32)
+                    .background(.white.opacity(0.14))
+                    .clipShape(Circle())
+                    .overlay(Circle().stroke(.white.opacity(0.14), lineWidth: 1))
+                    .contentShape(Circle())
+            }
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Units")
@@ -292,14 +298,18 @@ struct ContentView: View {
 
     private var startStopButton: some View {
         Button(action: toggleTracking) {
-            Image(systemName: tracker.isTracking ? "stop.fill" : "play.fill")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(tracker.isTracking ? .red : .green)
-                .frame(width: 28, height: 28)
-                .background(.white.opacity(0.14))
-                .clipShape(Circle())
-                .overlay(Circle().stroke(.white.opacity(0.14), lineWidth: 1))
-                .contentShape(Circle())
+            ZStack(alignment: .bottomLeading) {
+                Color.clear
+                    .frame(width: buttonHitTarget, height: buttonHitTarget)
+                Image(systemName: tracker.isTracking ? "stop.fill" : "play.fill")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(tracker.isTracking ? .red : .green)
+                    .frame(width: 28, height: 28)
+                    .background(.white.opacity(0.14))
+                    .clipShape(Circle())
+                    .overlay(Circle().stroke(.white.opacity(0.14), lineWidth: 1))
+                    .contentShape(Circle())
+            }
         }
         .buttonStyle(.plain)
         .focusEffectDisabled()
