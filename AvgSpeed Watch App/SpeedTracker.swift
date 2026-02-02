@@ -27,6 +27,7 @@ final class SpeedTracker: NSObject, ObservableObject {
     @Published private(set) var averageSpeedKmh: Double = 0
     @Published private(set) var currentSpeedKmh: Double = 0
     @Published private(set) var gpsSpeedKmh: Double = 0
+    @Published private(set) var isGpsFresh = false
     @Published private(set) var distanceKm: Double = 0
     @Published private(set) var elapsed: TimeInterval = 0
     @Published private(set) var authorizationStatus: CLAuthorizationStatus = .notDetermined
@@ -47,6 +48,7 @@ final class SpeedTracker: NSObject, ObservableObject {
     private var distanceElapsed: TimeInterval = 0
     private var startDate: Date?
     private var timer: Timer?
+    private var lastGpsUpdate: Date?
     private var pendingStartAfterAuth = false
     private var pendingStartAfterWorkoutEnd = false
 
@@ -193,6 +195,8 @@ final class SpeedTracker: NSObject, ObservableObject {
         locationManager.stopUpdatingLocation()
         isTracking = false
         isStarting = false
+        isGpsFresh = false
+        lastGpsUpdate = nil
         startDate = nil
         workoutManager.stop()
 #if DEBUG
@@ -280,6 +284,7 @@ extension SpeedTracker {
         simulatedSpeedKmh = min(max(simulatedSpeedKmh, 0), 40)
         currentSpeedKmh = simulatedSpeedKmh
         gpsSpeedKmh = simulatedSpeedKmh
+        lastGpsUpdate = now
 
         totalDistance += (simulatedSpeedKmh / 3.6) * dt
         distanceKm = totalDistance / 1000
@@ -303,6 +308,8 @@ extension SpeedTracker {
         tracker.distanceKm = 3.42
         tracker.elapsed = 780
         tracker.statusMessage = "Preview data"
+        tracker.isGpsFresh = true
+        tracker.lastGpsUpdate = Date()
         return tracker
     }
 }
@@ -331,6 +338,8 @@ private extension SpeedTracker {
         recentLocations.removeAll()
         startDate = nil
         ignoreLocationUpdatesUntil = nil
+        isGpsFresh = false
+        lastGpsUpdate = nil
     }
 
     func startElapsedTimer() {
@@ -341,6 +350,7 @@ private extension SpeedTracker {
             let referenceStart = measurementStartDate ?? startDate
             let runningElapsed = now.timeIntervalSince(referenceStart)
             elapsed = max(distanceElapsed, runningElapsed)
+            updateGpsFreshness(now: now)
 #if DEBUG
             tickSimulatedMotion(now: now)
 #endif
@@ -353,6 +363,8 @@ private extension SpeedTracker {
 
         let rawSpeedKmh = max(location.speed, 0) * 3.6
         gpsSpeedKmh = rawSpeedKmh
+        lastGpsUpdate = location.timestamp
+        updateGpsFreshness(now: Date())
 
         let now = Date()
         if let ignoreUntil = ignoreLocationUpdatesUntil {
@@ -452,6 +464,14 @@ private extension SpeedTracker {
     func pushToComplicationIfNeeded() {
         // Always store the latest state; ComplicationManager throttles reloadTimeline.
         ComplicationManager.shared.pushState(averageSpeedKmh: averageSpeedKmh, isRunning: true)
+    }
+
+    func updateGpsFreshness(now: Date) {
+        guard isTracking, let lastGpsUpdate else {
+            isGpsFresh = false
+            return
+        }
+        isGpsFresh = now.timeIntervalSince(lastGpsUpdate) <= maxAcceptedLocationAge
     }
 
     #if DEBUG

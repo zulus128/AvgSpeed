@@ -169,6 +169,8 @@ struct ContentView: View {
                             limitFraction: limitFraction,
                             needleFraction: needleFraction,
                             speed: averageSpeed,
+                            isTracking: tracker.isTracking,
+                            isGpsFresh: tracker.isGpsFresh,
                             unitLabel: speedUnit.speedLabel,
                             size: metrics.gaugeSize
                         )
@@ -436,8 +438,12 @@ private struct SpeedGauge: View {
     let limitFraction: Double
     let needleFraction: Double
     let speed: Double
+    let isTracking: Bool
+    let isGpsFresh: Bool
     let unitLabel: String
     let size: CGFloat
+
+    @State private var blink = false
 
     private var dynamicGradient: AngularGradient {
         let clampedLimit = limitFraction.clamped(to: 0...1)
@@ -464,6 +470,9 @@ private struct SpeedGauge: View {
         let needleHeight = size * 56 / 132
         let hubSize = size * 14 / 132
         let speedFontSize = size * 42 / 132
+        let fractionalFontSize = speedFontSize * 0.42
+        let fractionalBaselineOffset = speedFontSize * 0.22
+        let speedParts = formattedSpeedParts(speed)
 
         ZStack {
             Circle()
@@ -488,21 +497,65 @@ private struct SpeedGauge: View {
                 .overlay(Circle().stroke(Color.white.opacity(0.25), lineWidth: 1))
 
             VStack(spacing: 0) {
-                Text(speed, format: .number.precision(.fractionLength(1)))
-                    .font(.system(size: speedFontSize, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white)
-                    .monospacedDigit()
-                    .minimumScaleFactor(0.5)
-                    .lineLimit(1)
-                    .contentTransition(.numericText())
-                    .animation(.easeInOut(duration: 0.2), value: speed)
+                HStack(alignment: .firstTextBaseline, spacing: 1) {
+                    Text(speedParts.integer)
+                        .font(.system(size: speedFontSize, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
 
-                Text(unitLabel)
-                    .font(.caption2)
-                    .foregroundStyle(.white.opacity(0.75))
+                    Text("\(speedParts.separator)\(speedParts.fraction)")
+                        .font(.system(size: fractionalFontSize, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.85))
+                        .baselineOffset(fractionalBaselineOffset)
+                }
+                .monospacedDigit()
+                .minimumScaleFactor(0.5)
+                .lineLimit(1)
+                .contentTransition(.numericText())
+                .animation(.easeInOut(duration: 0.2), value: speed)
+
+                HStack(alignment: .center, spacing: 4) {
+                    Text(unitLabel)
+                        .font(.caption2)
+                        .foregroundStyle(.white.opacity(0.75))
+
+                    Circle()
+                        .fill(isGpsFresh ? Color.green : Color.red)
+                        .frame(width: max(3, speedFontSize * 0.10), height: max(3, speedFontSize * 0.10))
+                        .opacity(isTracking ? (blink ? 0.95 : 0.25) : 0)
+                        .scaleEffect(isTracking ? (blink ? 1.0 : 0.75) : 0.75)
+                        .shadow(color: (isGpsFresh ? Color.green : Color.red).opacity(isTracking ? 0.5 : 0), radius: 2)
+                        .accessibilityHidden(true)
+                }
             }
         }
         .frame(width: size, height: size)
+        .onAppear {
+            updateBlinking()
+        }
+        .onChange(of: isTracking) { _, _ in
+            updateBlinking()
+        }
+    }
+
+    private func formattedSpeedParts(_ speed: Double) -> (integer: String, separator: String, fraction: String) {
+        let formatted = speed.formatted(.number.precision(.fractionLength(2)))
+        let separator = Locale.current.decimalSeparator ?? "."
+        guard let range = formatted.range(of: separator) else {
+            return (formatted, separator, "00")
+        }
+        let integer = String(formatted[..<range.lowerBound])
+        let fraction = String(formatted[range.upperBound...])
+        return (integer, separator, fraction)
+    }
+
+    private func updateBlinking() {
+        guard isTracking else {
+            blink = false
+            return
+        }
+        withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
+            blink = true
+        }
     }
 }
 
