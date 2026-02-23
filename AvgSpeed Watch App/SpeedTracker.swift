@@ -28,6 +28,7 @@ final class SpeedTracker: NSObject, ObservableObject {
     @Published private(set) var currentSpeedKmh: Double = 0
     @Published private(set) var gpsSpeedKmh: Double = 0
     @Published private(set) var isGpsFresh = false
+    @Published private(set) var isGpsWeak = false
     @Published private(set) var distanceKm: Double = 0
     @Published private(set) var elapsed: TimeInterval = 0
     @Published private(set) var authorizationStatus: CLAuthorizationStatus = .notDetermined
@@ -54,8 +55,13 @@ final class SpeedTracker: NSObject, ObservableObject {
 
     private let startupWarmupDuration: TimeInterval = 2
     private let maxAcceptedLocationAge: TimeInterval = 10
-    private let maxHorizontalAccuracyForDistance: CLLocationAccuracy = 100
+    private let maxHorizontalAccuracyForSpeedSmoothing: CLLocationAccuracy = 200
+    private let maxHorizontalAccuracyForDistance: CLLocationAccuracy = 250
+    private let maxHorizontalAccuracyForEstimatedDistance: CLLocationAccuracy = 300
     private let minDistanceSampleInterval: TimeInterval = 1
+    private let maxEstimatedDistanceInterval: TimeInterval = 5
+    private let minEstimatedSpeedKmh: Double = 3
+    private let maxEstimatedSpeedKmh: Double = 180
     private let maxSegmentSpeedKmh: Double = 300
     private var ignoreLocationUpdatesUntil: Date?
 
@@ -196,6 +202,7 @@ final class SpeedTracker: NSObject, ObservableObject {
         isTracking = false
         isStarting = false
         isGpsFresh = false
+        isGpsWeak = false
         lastGpsUpdate = nil
         startDate = nil
         workoutManager.stop()
@@ -309,6 +316,7 @@ extension SpeedTracker {
         tracker.elapsed = 780
         tracker.statusMessage = "Preview data"
         tracker.isGpsFresh = true
+        tracker.isGpsWeak = false
         tracker.lastGpsUpdate = Date()
         return tracker
     }
@@ -320,8 +328,8 @@ private extension SpeedTracker {
     func configureLocationManager() {
         locationManager.delegate = self
         locationManager.activityType = .fitness
-        locationManager.desiredAccuracy = kCLLocationAccuracyHundredMeters
-        locationManager.distanceFilter = 10
+        locationManager.desiredAccuracy = kCLLocationAccuracyNearestTenMeters
+        locationManager.distanceFilter = 5
     }
 
     func resetMetrics() {
@@ -339,6 +347,7 @@ private extension SpeedTracker {
         startDate = nil
         ignoreLocationUpdatesUntil = nil
         isGpsFresh = false
+        isGpsWeak = false
         lastGpsUpdate = nil
     }
 
@@ -365,10 +374,12 @@ private extension SpeedTracker {
         gpsSpeedKmh = rawSpeedKmh
         lastGpsUpdate = location.timestamp
         updateGpsFreshness(now: Date())
+        isGpsWeak = location.horizontalAccuracy > maxHorizontalAccuracyForDistance
 
         let now = Date()
         if let ignoreUntil = ignoreLocationUpdatesUntil {
             if now < ignoreUntil {
+                isGpsWeak = false
                 lastLocation = location
                 recentLocations = [location]
                 averageSpeedKmh = 0
@@ -393,7 +404,7 @@ private extension SpeedTracker {
         recentLocations.append(location)
         recentLocations = recentLocations.filter {
             $0.horizontalAccuracy >= 0 &&
-            $0.horizontalAccuracy <= maxHorizontalAccuracyForDistance &&
+            $0.horizontalAccuracy <= maxHorizontalAccuracyForSpeedSmoothing &&
             abs($0.timestamp.timeIntervalSinceNow) <= maxAcceptedLocationAge &&
             location.timestamp.timeIntervalSince($0.timestamp) <= speedSmoothingWindow
         }
@@ -414,25 +425,31 @@ private extension SpeedTracker {
         if let last = lastLocation {
             let distance = location.distance(from: last)
             let interval = location.timestamp.timeIntervalSince(last.timestamp)
-                let segmentSpeed = (interval > 0) ? (distance / interval) * 3.6 : Double.greatestFiniteMagnitude
+            let segmentSpeed = (interval > 0) ? (distance / interval) * 3.6 : Double.greatestFiniteMagnitude
+            let hasReliableAccuracyPair =
+                location.horizontalAccuracy <= maxHorizontalAccuracyForDistance &&
+                last.horizontalAccuracy >= 0 &&
+                last.horizontalAccuracy <= maxHorizontalAccuracyForDistance
+            var usedEstimatedDistance = false
 
-                if interval >= minDistanceSampleInterval,
-                   distance >= 0,
-                   segmentSpeed <= maxSegmentSpeedKmh,
-                   location.horizontalAccuracy <= maxHorizontalAccuracyForDistance,
-                   last.horizontalAccuracy >= 0,
-                   last.horizontalAccuracy <= maxHorizontalAccuracyForDistance {
-                    if measurementStartDate == nil {
-                        measurementStartDate = last.timestamp
-                    }
-                    if initialSpeedSeedKmh == nil {
-                        initialSpeedSeedKmh = currentSpeedSampleKmh > 0 ? currentSpeedSampleKmh : segmentSpeed
-                    }
-                    distanceElapsed += interval
-                    totalDistance += distance
-                    distanceKm = totalDistance / 1000
-                }
+            if interval >= minDistanceSampleInterval,
+               distance >= 0,
+               segmentSpeed <= maxSegmentSpeedKmh,
+               hasReliableAccuracyPair {
+                let seedKmh = currentSpeedSampleKmh > 0 ? currentSpeedSampleKmh : segmentSpeed
+                applyDistanceSample(distanceMeters: distance, interval: interval, anchor: last.timestamp, seedKmh: seedKmh)
+            } else if interval >= minDistanceSampleInterval,
+                      interval <= maxEstimatedDistanceInterval,
+                      location.horizontalAccuracy <= maxHorizontalAccuracyForEstimatedDistance,
+                      rawSpeedKmh >= minEstimatedSpeedKmh,
+                      rawSpeedKmh <= maxEstimatedSpeedKmh {
+                // Fallback for short stretches of weak GPS geometry so distance does not flatline.
+                let estimatedDistance = (rawSpeedKmh / 3.6) * interval
+                applyDistanceSample(distanceMeters: estimatedDistance, interval: interval, anchor: last.timestamp, seedKmh: rawSpeedKmh)
+                usedEstimatedDistance = true
             }
+            isGpsWeak = isGpsWeak || usedEstimatedDistance
+        }
 
         let travelElapsed = distanceElapsed
         if travelElapsed > 0 {
@@ -469,9 +486,31 @@ private extension SpeedTracker {
     func updateGpsFreshness(now: Date) {
         guard isTracking, let lastGpsUpdate else {
             isGpsFresh = false
+            isGpsWeak = false
             return
         }
         isGpsFresh = now.timeIntervalSince(lastGpsUpdate) <= maxAcceptedLocationAge
+        if !isGpsFresh {
+            isGpsWeak = false
+        }
+    }
+
+    func applyDistanceSample(
+        distanceMeters: CLLocationDistance,
+        interval: TimeInterval,
+        anchor: Date,
+        seedKmh: Double
+    ) {
+        guard interval > 0, distanceMeters >= 0 else { return }
+        if measurementStartDate == nil {
+            measurementStartDate = anchor
+        }
+        if initialSpeedSeedKmh == nil {
+            initialSpeedSeedKmh = max(seedKmh, 0)
+        }
+        distanceElapsed += interval
+        totalDistance += distanceMeters
+        distanceKm = totalDistance / 1000
     }
 
     #if DEBUG

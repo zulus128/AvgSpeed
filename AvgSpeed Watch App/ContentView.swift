@@ -171,6 +171,7 @@ struct ContentView: View {
                             speed: averageSpeed,
                             isTracking: tracker.isTracking,
                             isGpsFresh: tracker.isGpsFresh,
+                            isGpsWeak: tracker.isGpsWeak,
                             unitLabel: speedUnit.speedLabel,
                             size: metrics.gaugeSize
                         )
@@ -440,6 +441,7 @@ private struct SpeedGauge: View {
     let speed: Double
     let isTracking: Bool
     let isGpsFresh: Bool
+    let isGpsWeak: Bool
     let unitLabel: String
     let size: CGFloat
 
@@ -462,6 +464,13 @@ private struct SpeedGauge: View {
             startAngle: .degrees(-90),
             endAngle: .degrees(270)
         )
+    }
+
+    private var gpsIndicatorColor: Color {
+        if !isGpsFresh {
+            return .red
+        }
+        return isGpsWeak ? .orange : .green
     }
 
     var body: some View {
@@ -519,11 +528,11 @@ private struct SpeedGauge: View {
                         .foregroundStyle(.white.opacity(0.75))
 
                     Circle()
-                        .fill(isGpsFresh ? Color.green : Color.red)
+                        .fill(gpsIndicatorColor)
                         .frame(width: max(3, speedFontSize * 0.10), height: max(3, speedFontSize * 0.10))
                         .opacity(isTracking ? (blink ? 0.95 : 0.25) : 0)
                         .scaleEffect(isTracking ? (blink ? 1.0 : 0.75) : 0.75)
-                        .shadow(color: (isGpsFresh ? Color.green : Color.red).opacity(isTracking ? 0.5 : 0), radius: 2)
+                        .shadow(color: gpsIndicatorColor.opacity(isTracking ? 0.5 : 0), radius: 2)
                         .accessibilityHidden(true)
                 }
             }
