@@ -8,6 +8,9 @@
 
 /* Begin PBXBuildFile section */
 		7E37A3EA2EF0A99400E1932B /* AvgSpeed Watch App.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 7E37A3E92EF0A99400E1932B /* AvgSpeed Watch App.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		7E9D10012F00000100E1932B /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7E9D10062F00000100E1932B /* WidgetKit.framework */; };
+		7E9D10022F00000100E1932B /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7E9D10072F00000100E1932B /* SwiftUI.framework */; };
+		7E9D10032F00000100E1932B /* AvgSpeedComplicationExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 7E9D10082F00000100E1932B /* AvgSpeedComplicationExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -17,6 +20,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = 7E37A3E82EF0A99400E1932B;
 			remoteInfo = "AvgSpeed Watch App";
+		};
+		7E9D10042F00000100E1932B /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 7E37A3DD2EF0A99300E1932B /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 7E9D100E2F00000100E1932B;
+			remoteInfo = AvgSpeedComplicationExtension;
 		};
 /* End PBXContainerItemProxy section */
 
@@ -32,17 +42,50 @@
 			name = "Embed Watch Content";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		7E9D10052F00000100E1932B /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				7E9D10032F00000100E1932B /* AvgSpeedComplicationExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		7E37A3E32EF0A99400E1932B /* AvgSpeed.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AvgSpeed.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		7E37A3E92EF0A99400E1932B /* AvgSpeed Watch App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "AvgSpeed Watch App.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		7E9D10062F00000100E1932B /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
+		7E9D10072F00000100E1932B /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
+		7E9D10082F00000100E1932B /* AvgSpeedComplicationExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = AvgSpeedComplicationExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		7E9D10092F00000100E1932B /* AvgSpeedComplicationExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AvgSpeedComplicationExtension.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		7E9D100A2F00000100E1932B /* Exceptions for "AvgSpeedComplication" folder in "AvgSpeedComplicationExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 7E9D100E2F00000100E1932B /* AvgSpeedComplicationExtension */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		7E37A3ED2EF0A99400E1932B /* AvgSpeed Watch App */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = "AvgSpeed Watch App";
+			sourceTree = "<group>";
+		};
+		7E9D100B2F00000100E1932B /* AvgSpeedComplication */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				7E9D100A2F00000100E1932B /* Exceptions for "AvgSpeedComplication" folder in "AvgSpeedComplicationExtension" target */,
+			);
+			path = AvgSpeedComplication;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -55,13 +98,25 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		7E9D100C2F00000100E1932B /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7E9D10022F00000100E1932B /* SwiftUI.framework in Frameworks */,
+				7E9D10012F00000100E1932B /* WidgetKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		7E37A3DC2EF0A99300E1932B = {
 			isa = PBXGroup;
 			children = (
+				7E9D10092F00000100E1932B /* AvgSpeedComplicationExtension.entitlements */,
 				7E37A3ED2EF0A99400E1932B /* AvgSpeed Watch App */,
+				7E9D100B2F00000100E1932B /* AvgSpeedComplication */,
+				7E9D100D2F00000100E1932B /* Frameworks */,
 				7E37A3E42EF0A99400E1932B /* Products */,
 			);
 			sourceTree = "<group>";
@@ -71,8 +126,18 @@
 			children = (
 				7E37A3E32EF0A99400E1932B /* AvgSpeed.app */,
 				7E37A3E92EF0A99400E1932B /* AvgSpeed Watch App.app */,
+				7E9D10082F00000100E1932B /* AvgSpeedComplicationExtension.appex */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		7E9D100D2F00000100E1932B /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				7E9D10062F00000100E1932B /* WidgetKit.framework */,
+				7E9D10072F00000100E1932B /* SwiftUI.framework */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -104,10 +169,12 @@
 				7E37A3E52EF0A99400E1932B /* Sources */,
 				7E37A3E62EF0A99400E1932B /* Frameworks */,
 				7E37A3E72EF0A99400E1932B /* Resources */,
+				7E9D10052F00000100E1932B /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				7E9D10112F00000100E1932B /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				7E37A3ED2EF0A99400E1932B /* AvgSpeed Watch App */,
@@ -118,6 +185,28 @@
 			productName = "AvgSpeed Watch App";
 			productReference = 7E37A3E92EF0A99400E1932B /* AvgSpeed Watch App.app */;
 			productType = "com.apple.product-type.application";
+		};
+		7E9D100E2F00000100E1932B /* AvgSpeedComplicationExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 7E9D10142F00000100E1932B /* Build configuration list for PBXNativeTarget "AvgSpeedComplicationExtension" */;
+			buildPhases = (
+				7E9D10102F00000100E1932B /* Sources */,
+				7E9D100C2F00000100E1932B /* Frameworks */,
+				7E9D100F2F00000100E1932B /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				7E9D100B2F00000100E1932B /* AvgSpeedComplication */,
+			);
+			name = AvgSpeedComplicationExtension;
+			packageProductDependencies = (
+			);
+			productName = AvgSpeedComplicationExtension;
+			productReference = 7E9D10082F00000100E1932B /* AvgSpeedComplicationExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -140,6 +229,9 @@
 							};
 						};
 					};
+					7E9D100E2F00000100E1932B = {
+						CreatedOnToolsVersion = 26.1.1;
+					};
 				};
 			};
 			buildConfigurationList = 7E37A3E02EF0A99300E1932B /* Build configuration list for PBXProject "AvgSpeed" */;
@@ -158,6 +250,7 @@
 			targets = (
 				7E37A3E22EF0A99400E1932B /* AvgSpeed */,
 				7E37A3E82EF0A99400E1932B /* AvgSpeed Watch App */,
+				7E9D100E2F00000100E1932B /* AvgSpeedComplicationExtension */,
 			);
 		};
 /* End PBXProject section */
@@ -177,10 +270,24 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		7E9D100F2F00000100E1932B /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		7E37A3E52EF0A99400E1932B /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		7E9D10102F00000100E1932B /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -194,6 +301,11 @@
 			isa = PBXTargetDependency;
 			target = 7E37A3E82EF0A99400E1932B /* AvgSpeed Watch App */;
 			targetProxy = 7E37A3EB2EF0A99400E1932B /* PBXContainerItemProxy */;
+		};
+		7E9D10112F00000100E1932B /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 7E9D100E2F00000100E1932B /* AvgSpeedComplicationExtension */;
+			targetProxy = 7E9D10042F00000100E1932B /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -321,7 +433,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = "AvgSpeed Watch App/AvgSpeed Watch App.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 4;
 				DEVELOPMENT_TEAM = 7TTF49AXF6;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -330,7 +442,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.1;
+				MARKETING_VERSION = 1.3;
 				PRODUCT_BUNDLE_IDENTIFIER = com.vkassin.AvgSpeed.watchkitapp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
@@ -353,7 +465,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = "AvgSpeed Watch App/AvgSpeed Watch App.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 4;
 				DEVELOPMENT_TEAM = 7TTF49AXF6;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -362,7 +474,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.1;
+				MARKETING_VERSION = 1.3;
 				PRODUCT_BUNDLE_IDENTIFIER = com.vkassin.AvgSpeed.watchkitapp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
@@ -379,14 +491,69 @@
 			};
 			name = Release;
 		};
+		7E9D10122F00000100E1932B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = AvgSpeedComplicationExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 4;
+				DEVELOPMENT_TEAM = 7TTF49AXF6;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = AvgSpeedComplication/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MARKETING_VERSION = 1.3;
+				PRODUCT_BUNDLE_IDENTIFIER = com.vkassin.AvgSpeed.watchkitapp.AvgSpeedComplicationExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 10.6;
+			};
+			name = Debug;
+		};
+		7E9D10132F00000100E1932B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = AvgSpeedComplicationExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 4;
+				DEVELOPMENT_TEAM = 7TTF49AXF6;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = AvgSpeedComplication/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MARKETING_VERSION = 1.3;
+				PRODUCT_BUNDLE_IDENTIFIER = com.vkassin.AvgSpeed.watchkitapp.AvgSpeedComplicationExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				VALIDATE_PRODUCT = YES;
+				WATCHOS_DEPLOYMENT_TARGET = 10.6;
+			};
+			name = Release;
+		};
 		7E37A3FB2EF0A99500E1932B /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 4;
 				DEVELOPMENT_TEAM = 7TTF49AXF6;
 				INFOPLIST_KEY_CFBundleDisplayName = AvgSpeed;
-				MARKETING_VERSION = 1.2;
+				MARKETING_VERSION = 1.3;
 				PRODUCT_BUNDLE_IDENTIFIER = com.vkassin.AvgSpeed;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -400,10 +567,10 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 4;
 				DEVELOPMENT_TEAM = 7TTF49AXF6;
 				INFOPLIST_KEY_CFBundleDisplayName = AvgSpeed;
-				MARKETING_VERSION = 1.2;
+				MARKETING_VERSION = 1.3;
 				PRODUCT_BUNDLE_IDENTIFIER = com.vkassin.AvgSpeed;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -440,6 +607,15 @@
 			buildConfigurations = (
 				7E37A3FB2EF0A99500E1932B /* Debug */,
 				7E37A3FC2EF0A99500E1932B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		7E9D10142F00000100E1932B /* Build configuration list for PBXNativeTarget "AvgSpeedComplicationExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7E9D10122F00000100E1932B /* Debug */,
+				7E9D10132F00000100E1932B /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

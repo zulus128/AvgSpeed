@@ -11,11 +11,13 @@ import WatchKit
 struct ContentView: View {
     @EnvironmentObject private var tracker: SpeedTracker
 
-    @AppStorage("speed_limit_kmh") private var speedLimitKmh: Double = 10
-    @AppStorage("speed_unit") private var speedUnitRaw: String = SpeedUnit.kmh.rawValue
+    @AppStorage("speed_limit_kmh", store: SharedDefaults.store) private var speedLimitKmh: Double = 10
+    @AppStorage("speed_unit", store: SharedDefaults.store) private var speedUnitRaw: String = SpeedUnit.kmh.rawValue
 
     @State private var wasOverLimit = false
     @State private var crownLimit: Double = 10
+    @State private var showsVersionInfo = false
+    @State private var unitLongPressTriggered = false
     @FocusState private var isLimitCrownFocused: Bool
 
     private let buttonHitTarget: CGFloat = 48
@@ -27,6 +29,12 @@ struct ContentView: View {
     private var currentSpeed: Double { max(speedUnit.speed(fromKmh: tracker.currentSpeedKmh), 0) }
     // private var gpsSpeed: Double { max(speedUnit.speed(fromKmh: tracker.gpsSpeedKmh), 0) }
     private var distance: Double { max(speedUnit.distance(fromKm: tracker.distanceKm), 0) }
+    private var appVersionText: String {
+        let info = Bundle.main.infoDictionary
+        let marketingVersion = (info?["CFBundleShortVersionString"] as? String) ?? "?"
+        let buildVersion = (info?["CFBundleVersion"] as? String) ?? "?"
+        return "v\(marketingVersion) (\(buildVersion))"
+    }
 
     private var crownLimitRange: ClosedRange<Double> {
         1...max(speedUnit.speed(fromKmh: 400), 1)
@@ -231,6 +239,22 @@ struct ContentView: View {
                 .padding(.horizontal, 6)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 .offset(y: metrics.topRowAlignmentOffset)
+                .overlay(alignment: .top) {
+                    if showsVersionInfo {
+                        Text(appVersionText)
+                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            .foregroundStyle(.white.opacity(0.8))
+                            .monospacedDigit()
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(.black.opacity(0.3))
+                            .clipShape(Capsule())
+                            .overlay(Capsule().stroke(.white.opacity(0.15), lineWidth: 1))
+                            .padding(.top, metrics.headerHeight + 2)
+                            .transition(.opacity)
+                            .accessibilityLabel("App version \(appVersionText)")
+                    }
+                }
             }
 #if DEBUG
             .onAppear {
@@ -257,6 +281,11 @@ struct ContentView: View {
             evaluateLimitHaptics()
             syncCrownLimit()
             isLimitCrownFocused = true
+            ComplicationManager.shared.pushState(
+                averageSpeedKmh: tracker.averageSpeedKmh,
+                isRunning: tracker.isTracking,
+                forceReload: true
+            )
         }
         .onChange(of: crownLimit) { _, newValue in
             let kmh = speedUnit.kmh(fromSpeed: newValue).clamped(to: 1...400)
@@ -267,6 +296,10 @@ struct ContentView: View {
     }
 
     private func toggleUnit() {
+        if unitLongPressTriggered {
+            unitLongPressTriggered = false
+            return
+        }
         speedUnitRaw = (speedUnit == .kmh) ? SpeedUnit.mph.rawValue : SpeedUnit.kmh.rawValue
     }
 
@@ -292,11 +325,21 @@ struct ContentView: View {
                     .overlay(Circle().stroke(.white.opacity(0.14), lineWidth: 1))
                     .contentShape(Circle())
             }
+            .simultaneousGesture(
+                LongPressGesture(minimumDuration: 1, maximumDistance: 24)
+                    .onEnded { _ in
+                        unitLongPressTriggered = true
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            showsVersionInfo.toggle()
+                        }
+                        WKInterfaceDevice.current().play(.click)
+                    }
+            )
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Units")
         .accessibilityValue(speedUnit.speedLabel)
-        .accessibilityHint("Tap to change units")
+        .accessibilityHint("Tap to change units. Long press to show app version")
     }
 
     private var startStopButton: some View {

@@ -7,17 +7,23 @@
 
 import ClockKit
 import Foundation
+#if canImport(WidgetKit)
+import WidgetKit
+#endif
 
 final class ComplicationManager {
     static let shared = ComplicationManager()
 
-    private let defaults = UserDefaults.standard
+    private let defaults = SharedDefaults.store
     private let averageKey = "latestAverageSpeedKmh"
     private let runningKey = "isTracking"
     private let updatedAtKey = "avgSpeedUpdatedAt"
     private let lastReloadAtKey = "avgSpeedLastComplicationReloadAt"
+    private let lastWidgetReloadAtKey = "avgSpeedLastWidgetReloadAt"
 
     private let reloadInterval: TimeInterval = 300
+    private let widgetReloadInterval: TimeInterval = 15
+    private let widgetKind = "AvgSpeedComplication"
 
     private init() {}
 
@@ -35,6 +41,12 @@ final class ComplicationManager {
         if forceReload || (now - lastReloadAt) >= reloadInterval {
             defaults.set(now, forKey: lastReloadAtKey)
             reloadAllComplications()
+        }
+
+        let lastWidgetReloadAt = defaults.double(forKey: lastWidgetReloadAtKey)
+        if forceReload || (now - lastWidgetReloadAt) >= widgetReloadInterval {
+            defaults.set(now, forKey: lastWidgetReloadAtKey)
+            reloadWidgetComplications()
         }
     }
 
@@ -56,5 +68,13 @@ final class ComplicationManager {
         server.activeComplications?.forEach { complication in
             server.reloadTimeline(for: complication)
         }
+    }
+
+    private func reloadWidgetComplications() {
+#if canImport(WidgetKit)
+        if #available(watchOSApplicationExtension 9.0, *) {
+            WidgetCenter.shared.reloadTimelines(ofKind: widgetKind)
+        }
+#endif
     }
 }

@@ -64,6 +64,7 @@ final class SpeedTracker: NSObject, ObservableObject {
     private let maxEstimatedSpeedKmh: Double = 180
     private let maxSegmentSpeedKmh: Double = 300
     private var ignoreLocationUpdatesUntil: Date?
+    private var hasReliableDistanceSample = false
 
     private let speedSmoothingWindow: TimeInterval = 8
     private var recentLocations: [CLLocation] = []
@@ -346,6 +347,7 @@ private extension SpeedTracker {
         recentLocations.removeAll()
         startDate = nil
         ignoreLocationUpdatesUntil = nil
+        hasReliableDistanceSample = false
         isGpsFresh = false
         isGpsWeak = false
         lastGpsUpdate = nil
@@ -399,6 +401,7 @@ private extension SpeedTracker {
             averageSpeedKmh = 0
             currentSpeedKmh = 0
             initialSpeedSeedKmh = nil
+            hasReliableDistanceSample = false
         }
 
         recentLocations.append(location)
@@ -438,7 +441,9 @@ private extension SpeedTracker {
                hasReliableAccuracyPair {
                 let seedKmh = currentSpeedSampleKmh > 0 ? currentSpeedSampleKmh : segmentSpeed
                 applyDistanceSample(distanceMeters: distance, interval: interval, anchor: last.timestamp, seedKmh: seedKmh)
+                hasReliableDistanceSample = true
             } else if interval >= minDistanceSampleInterval,
+                      hasReliableDistanceSample,
                       interval <= maxEstimatedDistanceInterval,
                       location.horizontalAccuracy <= maxHorizontalAccuracyForEstimatedDistance,
                       rawSpeedKmh >= minEstimatedSpeedKmh,
