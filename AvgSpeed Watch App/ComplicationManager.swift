@@ -2,14 +2,16 @@
 //  ComplicationManager.swift
 //  AvgSpeed Watch App
 //
-//  Stores the latest average speed and asks ClockKit to refresh.
+//  Stores the latest average speed and asks WidgetKit to refresh.
 //
 
-import ClockKit
 import Foundation
 #if canImport(WidgetKit)
 import WidgetKit
 #endif
+import OSLog
+
+private let complicationLogger = Logger(subsystem: "com.vkassin.AvgSpeed", category: "complication")
 
 final class ComplicationManager {
     static let shared = ComplicationManager()
@@ -18,10 +20,8 @@ final class ComplicationManager {
     private let averageKey = "latestAverageSpeedKmh"
     private let runningKey = "isTracking"
     private let updatedAtKey = "avgSpeedUpdatedAt"
-    private let lastReloadAtKey = "avgSpeedLastComplicationReloadAt"
     private let lastWidgetReloadAtKey = "avgSpeedLastWidgetReloadAt"
 
-    private let reloadInterval: TimeInterval = 300
     private let widgetReloadInterval: TimeInterval = 15
     private let widgetKind = "AvgSpeedComplication"
 
@@ -36,12 +36,9 @@ final class ComplicationManager {
         defaults.set(isRunning, forKey: runningKey)
         let now = Date().timeIntervalSince1970
         defaults.set(now, forKey: updatedAtKey)
-
-        let lastReloadAt = defaults.double(forKey: lastReloadAtKey)
-        if forceReload || (now - lastReloadAt) >= reloadInterval {
-            defaults.set(now, forKey: lastReloadAtKey)
-            reloadAllComplications()
-        }
+        complicationLogger.notice(
+            "pushState speed=\(speedKmh, format: .fixed(precision: 1)) running=\(isRunning, privacy: .public) forceReload=\(forceReload, privacy: .public)"
+        )
 
         let lastWidgetReloadAt = defaults.double(forKey: lastWidgetReloadAtKey)
         if forceReload || (now - lastWidgetReloadAt) >= widgetReloadInterval {
@@ -63,16 +60,10 @@ final class ComplicationManager {
         return ts > 0 ? Date(timeIntervalSince1970: ts) : nil
     }
 
-    private func reloadAllComplications() {
-        let server = CLKComplicationServer.sharedInstance()
-        server.activeComplications?.forEach { complication in
-            server.reloadTimeline(for: complication)
-        }
-    }
-
     private func reloadWidgetComplications() {
 #if canImport(WidgetKit)
         if #available(watchOSApplicationExtension 9.0, *) {
+            complicationLogger.notice("requesting WidgetKit reload for kind=\(self.widgetKind, privacy: .public)")
             WidgetCenter.shared.reloadTimelines(ofKind: widgetKind)
         }
 #endif

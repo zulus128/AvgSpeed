@@ -8,7 +8,6 @@
 import SwiftUI
 import Combine
 import CoreLocation
-import ClockKit
 
 @MainActor
 final class SpeedTracker: NSObject, ObservableObject {
@@ -43,6 +42,7 @@ final class SpeedTracker: NSObject, ObservableObject {
     private let locationManager = CLLocationManager()
     private let workoutManager = WorkoutManager()
     private var lastLocation: CLLocation?
+    private var distanceAnchorLocation: CLLocation?
     private var totalDistance: CLLocationDistance = 0
     private var initialSpeedSeedKmh: Double?
     private var measurementStartDate: Date?
@@ -60,6 +60,8 @@ final class SpeedTracker: NSObject, ObservableObject {
     private let maxHorizontalAccuracyForEstimatedDistance: CLLocationAccuracy = 300
     private let minDistanceSampleInterval: TimeInterval = 1
     private let maxEstimatedDistanceInterval: TimeInterval = 5
+    private let minGapBridgeInterval: TimeInterval = 15
+    private let maxGapBridgeInterval: TimeInterval = 300
     private let minEstimatedSpeedKmh: Double = 3
     private let maxEstimatedSpeedKmh: Double = 180
     private let maxSegmentSpeedKmh: Double = 300
@@ -75,11 +77,12 @@ final class SpeedTracker: NSObject, ObservableObject {
         workoutManager.onEnded = { [weak self] error in
             guard let self else { return }
             if let error {
-                print("[SpeedTracker] Workout ended with error: \(error.localizedDescription)")
+                recordDiagnostic("[SpeedTracker] Workout ended with error: \(error.localizedDescription)")
                 statusMessage = nil
             }
             if pendingStartAfterWorkoutEnd {
                 pendingStartAfterWorkoutEnd = false
+                recordDiagnostic("[SpeedTracker] Waiting workout ended; retrying start")
                 startTracking()
                 return
             }
@@ -112,6 +115,7 @@ final class SpeedTracker: NSObject, ObservableObject {
         pendingStartAfterWorkoutEnd = false
         resetMetrics()
         statusMessage = "Starting…"
+        recordDiagnostic("[SpeedTracker] Start requested")
 
         // Avoid calling CLLocationManager authorization checks on the main thread.
         Task.detached(priority: .userInitiated) {
@@ -125,7 +129,7 @@ final class SpeedTracker: NSObject, ObservableObject {
 
     private func startTrackingAfterLocationCheck(servicesEnabled: Bool, status: CLAuthorizationStatus) {
         guard servicesEnabled else {
-            print("[SpeedTracker] Location services disabled")
+            recordDiagnostic("[SpeedTracker] Location services disabled")
             statusMessage = nil
             return
         }
@@ -139,7 +143,7 @@ final class SpeedTracker: NSObject, ObservableObject {
         }
 
         guard authorizationStatus == .authorizedWhenInUse || authorizationStatus == .authorizedAlways else {
-            print("[SpeedTracker] Location permission not granted: \(authorizationStatus)")
+            recordDiagnostic("[SpeedTracker] Location permission not granted: \(authorizationStatus)")
             statusMessage = nil
             stopTracking(reason: .permission)
             return
@@ -164,6 +168,7 @@ final class SpeedTracker: NSObject, ObservableObject {
                 isStarting = false
                 isTracking = true
                 statusMessage = "Tracking…"
+                recordDiagnostic("[SpeedTracker] Tracking started workout=\(workoutManager.isRunning)")
                 ComplicationManager.shared.pushState(averageSpeedKmh: averageSpeedKmh, isRunning: true, forceReload: true)
             } catch {
                 guard isStarting else { return }
@@ -182,7 +187,7 @@ final class SpeedTracker: NSObject, ObservableObject {
                         break
                     }
                 }
-                print("[SpeedTracker] Workout start failed: \(error.localizedDescription)")
+                recordDiagnostic("[SpeedTracker] Workout start failed: \(error.localizedDescription)")
                 startDate = Date()
                 startElapsedTimer()
                 ignoreLocationUpdatesUntil = Date().addingTimeInterval(startupWarmupDuration)
@@ -190,6 +195,7 @@ final class SpeedTracker: NSObject, ObservableObject {
                 isStarting = false
                 isTracking = true
                 statusMessage = nil
+                recordDiagnostic("[SpeedTracker] Tracking started without workout session")
                 ComplicationManager.shared.pushState(averageSpeedKmh: averageSpeedKmh, isRunning: true, forceReload: true)
             }
         }
@@ -207,6 +213,12 @@ final class SpeedTracker: NSObject, ObservableObject {
         lastGpsUpdate = nil
         startDate = nil
         workoutManager.stop()
+        recordDiagnostic(
+            "[SpeedTracker] Tracking stopped " +
+            "reason=\(stopReasonLabel(reason)) " +
+            "distance_km=\(String(format: "%.3f", distanceKm)) " +
+            "elapsed_s=\(String(format: "%.1f", elapsed))"
+        )
 #if DEBUG
         isSimulating = false
         simulationStartDate = nil
@@ -240,7 +252,7 @@ extension SpeedTracker {
         }
 
         guard !isTracking, !isStarting else {
-            print("[SpeedTracker] Demo simulation ignored (already tracking)")
+            recordDiagnostic("[SpeedTracker] Demo simulation ignored (already tracking)")
             return
         }
 
@@ -263,7 +275,7 @@ extension SpeedTracker {
         isStarting = false
         startElapsedTimer()
 
-        print("[SpeedTracker] Demo simulation started")
+        recordDiagnostic("[SpeedTracker] Demo simulation started")
         ComplicationManager.shared.pushState(averageSpeedKmh: averageSpeedKmh, isRunning: true, forceReload: true)
     }
 
@@ -344,6 +356,7 @@ private extension SpeedTracker {
         distanceElapsed = 0
         elapsed = 0
         lastLocation = nil
+        distanceAnchorLocation = nil
         recentLocations.removeAll()
         startDate = nil
         ignoreLocationUpdatesUntil = nil
@@ -356,21 +369,21 @@ private extension SpeedTracker {
     func startElapsedTimer() {
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            guard let self, let startDate else { return }
-            let now = Date()
-            let referenceStart = measurementStartDate ?? startDate
-            let runningElapsed = now.timeIntervalSince(referenceStart)
-            elapsed = max(distanceElapsed, runningElapsed)
-            updateGpsFreshness(now: now)
+            Task { @MainActor [weak self] in
+                guard let self, startDate != nil else { return }
+                let now = Date()
+                refreshElapsedAndAverage(at: now)
+                updateGpsFreshness(now: now)
 #if DEBUG
-            tickSimulatedMotion(now: now)
+                tickSimulatedMotion(now: now)
 #endif
+            }
         }
     }
 
-    func updateMetrics(with location: CLLocation) {
+    func updateMetrics(with location: CLLocation, allowHistoricalSample: Bool = false) {
         guard location.horizontalAccuracy >= 0 else { return }
-        guard abs(location.timestamp.timeIntervalSinceNow) <= maxAcceptedLocationAge else { return }
+        guard shouldProcessLocationTimestamp(location.timestamp, allowHistoricalSample: allowHistoricalSample) else { return }
 
         let rawSpeedKmh = max(location.speed, 0) * 3.6
         gpsSpeedKmh = rawSpeedKmh
@@ -393,6 +406,7 @@ private extension SpeedTracker {
             // Warmup just ended; drop warmup samples entirely.
             ignoreLocationUpdatesUntil = nil
             lastLocation = nil
+            distanceAnchorLocation = nil
             recentLocations.removeAll()
             measurementStartDate = nil
             distanceElapsed = 0
@@ -408,7 +422,7 @@ private extension SpeedTracker {
         recentLocations = recentLocations.filter {
             $0.horizontalAccuracy >= 0 &&
             $0.horizontalAccuracy <= maxHorizontalAccuracyForSpeedSmoothing &&
-            abs($0.timestamp.timeIntervalSinceNow) <= maxAcceptedLocationAge &&
+            location.timestamp.timeIntervalSince($0.timestamp) >= 0 &&
             location.timestamp.timeIntervalSince($0.timestamp) <= speedSmoothingWindow
         }
 
@@ -425,7 +439,11 @@ private extension SpeedTracker {
             initialSpeedSeedKmh = currentSpeedSampleKmh
         }
 
-        if let last = lastLocation {
+        var usedEstimatedDistance = false
+        var usedGapBridge = false
+        var skippedOverlongGapBridge = false
+
+        if let last = distanceAnchorLocation ?? lastLocation {
             let distance = location.distance(from: last)
             let interval = location.timestamp.timeIntervalSince(last.timestamp)
             let segmentSpeed = (interval > 0) ? (distance / interval) * 3.6 : Double.greatestFiniteMagnitude
@@ -433,15 +451,18 @@ private extension SpeedTracker {
                 location.horizontalAccuracy <= maxHorizontalAccuracyForDistance &&
                 last.horizontalAccuracy >= 0 &&
                 last.horizontalAccuracy <= maxHorizontalAccuracyForDistance
-            var usedEstimatedDistance = false
+            let isLongGapBridge = interval >= minGapBridgeInterval
 
             if interval >= minDistanceSampleInterval,
                distance >= 0,
                segmentSpeed <= maxSegmentSpeedKmh,
-               hasReliableAccuracyPair {
+               hasReliableAccuracyPair,
+               (!isLongGapBridge || interval <= maxGapBridgeInterval) {
                 let seedKmh = currentSpeedSampleKmh > 0 ? currentSpeedSampleKmh : segmentSpeed
                 applyDistanceSample(distanceMeters: distance, interval: interval, anchor: last.timestamp, seedKmh: seedKmh)
                 hasReliableDistanceSample = true
+                distanceAnchorLocation = location
+                usedGapBridge = isLongGapBridge
             } else if interval >= minDistanceSampleInterval,
                       hasReliableDistanceSample,
                       interval <= maxEstimatedDistanceInterval,
@@ -452,27 +473,33 @@ private extension SpeedTracker {
                 let estimatedDistance = (rawSpeedKmh / 3.6) * interval
                 applyDistanceSample(distanceMeters: estimatedDistance, interval: interval, anchor: last.timestamp, seedKmh: rawSpeedKmh)
                 usedEstimatedDistance = true
+                distanceAnchorLocation = location
+            } else if hasReliableAccuracyPair,
+                      interval > maxGapBridgeInterval {
+                // Re-anchor after an overlong outage instead of bridging from stale geometry.
+                distanceAnchorLocation = location
+                skippedOverlongGapBridge = true
             }
-            isGpsWeak = isGpsWeak || usedEstimatedDistance
         }
 
-        let travelElapsed = distanceElapsed
-        if travelElapsed > 0 {
-            averageSpeedKmh = (totalDistance / travelElapsed) * 3.6
-            elapsed = travelElapsed
-        } else if let referenceStart = measurementStartDate ?? startDate {
-            let calcElapsed = location.timestamp.timeIntervalSince(referenceStart)
-            elapsed = calcElapsed
-            averageSpeedKmh = initialSpeedSeedKmh ?? currentSpeedSampleKmh
+        if distanceAnchorLocation == nil,
+           location.horizontalAccuracy <= maxHorizontalAccuracyForDistance {
+            distanceAnchorLocation = location
         }
+
+        isGpsWeak = isGpsWeak || usedEstimatedDistance || usedGapBridge
 
         currentSpeedKmh = currentSpeedSampleKmh
+        refreshElapsedAndAverage(at: location.timestamp, currentSpeedSampleKmh: currentSpeedSampleKmh)
 
 #if DEBUG
         debugLogAverage(
-            source: "location",
+            source: skippedOverlongGapBridge ? "gap-reset" : (usedGapBridge ? "gap-bridge" : (usedEstimatedDistance ? "estimated" : "location")),
             totalDistanceMeters: totalDistance,
-            travelSeconds: travelElapsed,
+            travelSeconds: distanceElapsed,
+            sessionSeconds: elapsed,
+            horizontalAccuracy: location.horizontalAccuracy,
+            gpsSpeedKmh: rawSpeedKmh,
             currentSpeedKmh: currentSpeedSampleKmh,
             averageSpeedKmh: averageSpeedKmh,
             seedKmh: initialSpeedSeedKmh
@@ -486,6 +513,23 @@ private extension SpeedTracker {
     func pushToComplicationIfNeeded() {
         // Always store the latest state; ComplicationManager throttles reloadTimeline.
         ComplicationManager.shared.pushState(averageSpeedKmh: averageSpeedKmh, isRunning: true)
+    }
+
+    func recordDiagnostic(_ message: String) {
+        TrackerDiagnostics.shared.log(message)
+    }
+
+    func stopReasonLabel(_ reason: StopReason) -> String {
+        switch reason {
+        case .user:
+            return "user"
+        case .complication:
+            return "complication"
+        case .workoutEnded:
+            return "workoutEnded"
+        case .permission:
+            return "permission"
+        }
     }
 
     func updateGpsFreshness(now: Date) {
@@ -518,11 +562,58 @@ private extension SpeedTracker {
         distanceKm = totalDistance / 1000
     }
 
+    func shouldProcessLocationTimestamp(_ timestamp: Date, allowHistoricalSample: Bool) -> Bool {
+        if timestamp.timeIntervalSinceNow > maxAcceptedLocationAge {
+            return false
+        }
+
+        if let startDate, timestamp < startDate {
+            return false
+        }
+
+        if let lastLocation, timestamp <= lastLocation.timestamp {
+            return false
+        }
+
+        if allowHistoricalSample {
+            return true
+        }
+
+        return abs(timestamp.timeIntervalSinceNow) <= maxAcceptedLocationAge
+    }
+
+    func refreshElapsedAndAverage(at date: Date, currentSpeedSampleKmh: Double? = nil) {
+        guard let referenceStart = measurementStartDate ?? startDate else {
+            elapsed = 0
+            averageSpeedKmh = 0
+            return
+        }
+
+        let sessionElapsed = max(date.timeIntervalSince(referenceStart), 0)
+        elapsed = sessionElapsed
+
+        if hasReliableDistanceSample, sessionElapsed > 0 {
+            averageSpeedKmh = (totalDistance / sessionElapsed) * 3.6
+            return
+        }
+
+        if let currentSpeedSampleKmh, currentSpeedSampleKmh > 0 {
+            averageSpeedKmh = initialSpeedSeedKmh ?? currentSpeedSampleKmh
+        } else if let initialSpeedSeedKmh, initialSpeedSeedKmh > 0 {
+            averageSpeedKmh = initialSpeedSeedKmh
+        } else {
+            averageSpeedKmh = 0
+        }
+    }
+
     #if DEBUG
     private func debugLogAverage(
         source: String,
         totalDistanceMeters: Double,
         travelSeconds: TimeInterval,
+        sessionSeconds: TimeInterval,
+        horizontalAccuracy: Double,
+        gpsSpeedKmh: Double,
         currentSpeedKmh: Double,
         averageSpeedKmh: Double,
         seedKmh: Double?
@@ -534,11 +625,14 @@ private extension SpeedTracker {
         let seed = seedKmh ?? 0
         let averageDeviation = averageSpeedKmh - seed
 
-        print(
+        recordDiagnostic(
             "[AvgSpeed][\(source)] " +
             "distance_m=\(formatter(totalDistanceMeters, 2)) " +
             "distance_km=\(formatter(distanceKm, 6)) " +
-            "travel_s=\(formatter(travelSeconds, 4)) " + // sum of intervals where distance was accepted
+            "travel_s=\(formatter(travelSeconds, 4)) " +
+            "session_s=\(formatter(sessionSeconds, 4)) " +
+            "accuracy_m=\(formatter(horizontalAccuracy, 1)) " +
+            "gps_kmh=\(formatter(gpsSpeedKmh, 3)) " +
             "current_kmh=\(formatter(currentSpeedKmh, 3)) " +
             "seed_kmh=\(formatter(seed, 3)) " +
             "avg_dev_kmh=\(formatter(averageDeviation, 3)) " +
@@ -561,10 +655,22 @@ extension SpeedTracker: CLLocationManagerDelegate {
     }
 
     nonisolated func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        guard let location = locations.last else { return }
+        let orderedLocations = locations.sorted { $0.timestamp < $1.timestamp }
+        guard !orderedLocations.isEmpty else { return }
         Task { @MainActor in
             guard isTracking else { return }
-            updateMetrics(with: location)
+#if DEBUG
+            if orderedLocations.count > 1,
+               let first = orderedLocations.first,
+               let last = orderedLocations.last {
+                let span = max(last.timestamp.timeIntervalSince(first.timestamp), 0)
+                recordDiagnostic("[SpeedTracker] Processing location batch count=\(orderedLocations.count) span_s=\(String(format: "%.2f", span))")
+            }
+#endif
+            for location in orderedLocations {
+                guard isTracking else { break }
+                updateMetrics(with: location, allowHistoricalSample: true)
+            }
         }
     }
 
@@ -577,10 +683,10 @@ extension SpeedTracker: CLLocationManagerDelegate {
                 switch code {
                 case .locationUnknown:
                     // Temporary condition (GPS acquiring, poor signal, indoors). Keep tracking.
-                    print("\(prefix) (locationUnknown; will keep trying)")
+                    recordDiagnostic("\(prefix) (locationUnknown; will keep trying)")
                     return
                 case .denied:
-                    print("\(prefix) (denied)")
+                    recordDiagnostic("\(prefix) (denied)")
                     statusMessage = nil
                     stopTracking(reason: .permission)
                     return
@@ -590,7 +696,7 @@ extension SpeedTracker: CLLocationManagerDelegate {
             }
 
             // For other errors, log but don't stop; CoreLocation may recover on its own.
-            print(prefix)
+            recordDiagnostic(prefix)
             statusMessage = nil
         }
     }

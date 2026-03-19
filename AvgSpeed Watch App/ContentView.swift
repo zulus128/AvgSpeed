@@ -10,6 +10,7 @@ import WatchKit
 
 struct ContentView: View {
     @EnvironmentObject private var tracker: SpeedTracker
+    @StateObject private var diagnostics = TrackerDiagnostics.shared
 
     @AppStorage("speed_limit_kmh", store: SharedDefaults.store) private var speedLimitKmh: Double = 10
     @AppStorage("speed_unit", store: SharedDefaults.store) private var speedUnitRaw: String = SpeedUnit.kmh.rawValue
@@ -17,6 +18,7 @@ struct ContentView: View {
     @State private var wasOverLimit = false
     @State private var crownLimit: Double = 10
     @State private var showsVersionInfo = false
+    @State private var showsDiagnostics = false
     @State private var unitLongPressTriggered = false
     @FocusState private var isLimitCrownFocused: Bool
 
@@ -241,18 +243,34 @@ struct ContentView: View {
                 .offset(y: metrics.topRowAlignmentOffset)
                 .overlay(alignment: .top) {
                     if showsVersionInfo {
-                        Text(appVersionText)
-                            .font(.system(size: 11, weight: .semibold, design: .rounded))
-                            .foregroundStyle(.white.opacity(0.8))
-                            .monospacedDigit()
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(.black.opacity(0.3))
-                            .clipShape(Capsule())
-                            .overlay(Capsule().stroke(.white.opacity(0.15), lineWidth: 1))
-                            .padding(.top, metrics.headerHeight + 2)
-                            .transition(.opacity)
-                            .accessibilityLabel("App version \(appVersionText)")
+                        VStack(spacing: 4) {
+                            Text(appVersionText)
+                                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                .foregroundStyle(.white.opacity(0.8))
+                                .monospacedDigit()
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(.black.opacity(0.3))
+                                .clipShape(Capsule())
+                                .overlay(Capsule().stroke(.white.opacity(0.15), lineWidth: 1))
+                                .accessibilityLabel("App version \(appVersionText)")
+
+                            Button(action: openDiagnostics) {
+                                Text("Logs \(diagnostics.entries.count)")
+                                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                                    .foregroundStyle(.white)
+                                    .monospacedDigit()
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 3)
+                                    .background(.black.opacity(0.4))
+                                    .clipShape(Capsule())
+                                    .overlay(Capsule().stroke(.white.opacity(0.18), lineWidth: 1))
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityHint("Opens saved diagnostics from standalone runs")
+                        }
+                        .padding(.top, metrics.headerHeight + 2)
+                        .transition(.opacity)
                     }
                 }
             }
@@ -293,6 +311,9 @@ struct ContentView: View {
                 speedLimitKmh = kmh
             }
         }
+        .sheet(isPresented: $showsDiagnostics) {
+            DiagnosticsLogView(diagnostics: diagnostics)
+        }
     }
 
     private func toggleUnit() {
@@ -306,6 +327,11 @@ struct ContentView: View {
     private func toggleTracking() {
         tracker.toggleTracking()
         isLimitCrownFocused = true
+    }
+
+    private func openDiagnostics() {
+        showsVersionInfo = false
+        showsDiagnostics = true
     }
 
     private var unitToggleButton: some View {
@@ -422,6 +448,55 @@ struct ContentView: View {
 
     private func roundUp(_ value: Double, step: Double) -> Double {
         (value / step).rounded(.up) * step
+    }
+}
+
+private struct DiagnosticsLogView: View {
+    @ObservedObject var diagnostics: TrackerDiagnostics
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+
+            VStack(spacing: 4) {
+                HStack(spacing: 6) {
+                    Text("Diagnostics")
+                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+
+                    Text("\(diagnostics.entries.count)")
+                        .font(.system(size: 10, weight: .medium, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.55))
+
+                    Spacer(minLength: 4)
+
+                    Button("Clear") {
+                        diagnostics.clear()
+                    }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(.white.opacity(0.12))
+                    .clipShape(Capsule())
+                    .overlay(Capsule().stroke(.white.opacity(0.14), lineWidth: 1))
+                }
+
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 4) {
+                        ForEach(Array(diagnostics.entries.indices.reversed()), id: \.self) { index in
+                            Text(diagnostics.entries[index])
+                                .font(.system(size: 9, weight: .regular, design: .monospaced))
+                                .foregroundStyle(.white.opacity(0.9))
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            .padding(.horizontal, 6)
+            .padding(.top, 2)
+            .padding(.bottom, 0)
+        }
     }
 }
 

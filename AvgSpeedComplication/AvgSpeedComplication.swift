@@ -7,6 +7,9 @@
 
 import SwiftUI
 import WidgetKit
+import OSLog
+
+private let complicationLogger = Logger(subsystem: "com.vkassin.AvgSpeed", category: "complication")
 
 private enum SharedComplicationDefaults {
     static let appGroupIdentifier = "group.7TTF49AXF6.com.vkassin.AvgSpeed"
@@ -73,7 +76,8 @@ private struct AvgSpeedComplicationEntry: TimelineEntry {
 
 private struct AvgSpeedComplicationProvider: TimelineProvider {
     func placeholder(in context: Context) -> AvgSpeedComplicationEntry {
-        AvgSpeedComplicationEntry(
+        complicationLogger.notice("placeholder requested; preview=\(context.isPreview, privacy: .public)")
+        return AvgSpeedComplicationEntry(
             date: Date(),
             isRunning: true,
             displaySpeed: 12.5,
@@ -82,13 +86,20 @@ private struct AvgSpeedComplicationProvider: TimelineProvider {
     }
 
     func getSnapshot(in context: Context, completion: @escaping (AvgSpeedComplicationEntry) -> Void) {
-        completion(loadEntry(at: Date()))
+        let entry = loadEntry(at: Date())
+        complicationLogger.notice(
+            "snapshot requested; preview=\(context.isPreview, privacy: .public) running=\(entry.isRunning, privacy: .public) speed=\(entry.displaySpeed, format: .fixed(precision: 1)) unit=\(entry.unit.rawValue, privacy: .public)"
+        )
+        completion(entry)
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<AvgSpeedComplicationEntry>) -> Void) {
         let now = Date()
         let entry = loadEntry(at: now)
         let nextRefresh = now.addingTimeInterval(30)
+        complicationLogger.notice(
+            "timeline requested; running=\(entry.isRunning, privacy: .public) speed=\(entry.displaySpeed, format: .fixed(precision: 1)) unit=\(entry.unit.rawValue, privacy: .public) nextRefresh=\(nextRefresh.formatted(date: .omitted, time: .standard), privacy: .public)"
+        )
         completion(Timeline(entries: [entry], policy: .after(nextRefresh)))
     }
 
@@ -99,6 +110,9 @@ private struct AvgSpeedComplicationProvider: TimelineProvider {
         let unitRaw = defaults.string(forKey: SharedComplicationDefaults.speedUnitKey) ?? ComplicationSpeedUnit.kmh.rawValue
         let unit = ComplicationSpeedUnit(rawValue: unitRaw) ?? .kmh
         let displaySpeed = unit.speed(fromKmh: averageSpeedKmh)
+        complicationLogger.notice(
+            "loadEntry avgKmh=\(averageSpeedKmh, format: .fixed(precision: 1)) running=\(isRunning, privacy: .public) unit=\(unit.rawValue, privacy: .public)"
+        )
 
         return AvgSpeedComplicationEntry(
             date: date,
@@ -114,8 +128,10 @@ struct AvgSpeedComplicationExtension: Widget {
     let kind = "AvgSpeedComplication"
 
     var body: some WidgetConfiguration {
-        StaticConfiguration(kind: kind, provider: AvgSpeedComplicationProvider()) { entry in
+        complicationLogger.notice("widget configuration loaded for kind=\(kind, privacy: .public)")
+        return StaticConfiguration(kind: kind, provider: AvgSpeedComplicationProvider()) { entry in
             AvgSpeedComplicationView(entry: entry)
+                .containerBackground(for: .widget) {}
         }
         .configurationDisplayName("Average Speed")
         .description("Shows your latest average speed.")
