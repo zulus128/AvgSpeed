@@ -56,6 +56,7 @@ final class SpeedTracker: NSObject, ObservableObject {
     private let startupWarmupDuration: TimeInterval = 2
     private let maxAcceptedLocationAge: TimeInterval = 10
     private let maxHorizontalAccuracyForSpeedSmoothing: CLLocationAccuracy = 200
+    private let maxHorizontalAccuracyForInitialDistance: CLLocationAccuracy = 100
     private let maxHorizontalAccuracyForDistance: CLLocationAccuracy = 250
     private let maxHorizontalAccuracyForEstimatedDistance: CLLocationAccuracy = 300
     private let minDistanceSampleInterval: TimeInterval = 1
@@ -64,6 +65,7 @@ final class SpeedTracker: NSObject, ObservableObject {
     private let maxGapBridgeInterval: TimeInterval = 300
     private let minEstimatedSpeedKmh: Double = 3
     private let maxEstimatedSpeedKmh: Double = 180
+    private let maxInitialSegmentSpeedKmh: Double = 80
     private let maxSegmentSpeedKmh: Double = 300
     private var ignoreLocationUpdatesUntil: Date?
     private var hasReliableDistanceSample = false
@@ -435,8 +437,9 @@ private extension SpeedTracker {
             currentSpeedSampleKmh = 0
         }
 
-        if initialSpeedSeedKmh == nil, currentSpeedSampleKmh > 0 {
-            initialSpeedSeedKmh = currentSpeedSampleKmh
+        if initialSpeedSeedKmh == nil,
+           let startupSpeedSeedKmh = startupSpeedSeed(rawSpeedKmh: rawSpeedKmh, horizontalAccuracy: location.horizontalAccuracy) {
+            initialSpeedSeedKmh = startupSpeedSeedKmh
         }
 
         var usedEstimatedDistance = false
@@ -451,14 +454,19 @@ private extension SpeedTracker {
                 location.horizontalAccuracy <= maxHorizontalAccuracyForDistance &&
                 last.horizontalAccuracy >= 0 &&
                 last.horizontalAccuracy <= maxHorizontalAccuracyForDistance
+            let hasReliableInitialAccuracyPair =
+                location.horizontalAccuracy <= maxHorizontalAccuracyForInitialDistance &&
+                last.horizontalAccuracy <= maxHorizontalAccuracyForInitialDistance
             let isLongGapBridge = interval >= minGapBridgeInterval
+            let maxAcceptedSegmentSpeedKmh = hasReliableDistanceSample ? maxSegmentSpeedKmh : maxInitialSegmentSpeedKmh
 
             if interval >= minDistanceSampleInterval,
                distance >= 0,
-               segmentSpeed <= maxSegmentSpeedKmh,
+               segmentSpeed <= maxAcceptedSegmentSpeedKmh,
                hasReliableAccuracyPair,
+               (hasReliableDistanceSample || hasReliableInitialAccuracyPair),
                (!isLongGapBridge || interval <= maxGapBridgeInterval) {
-                let seedKmh = currentSpeedSampleKmh > 0 ? currentSpeedSampleKmh : segmentSpeed
+                let seedKmh = currentSpeedSampleKmh > 0 ? min(currentSpeedSampleKmh, maxAcceptedSegmentSpeedKmh) : segmentSpeed
                 applyDistanceSample(distanceMeters: distance, interval: interval, anchor: last.timestamp, seedKmh: seedKmh)
                 hasReliableDistanceSample = true
                 distanceAnchorLocation = location
@@ -489,8 +497,13 @@ private extension SpeedTracker {
 
         isGpsWeak = isGpsWeak || usedEstimatedDistance || usedGapBridge
 
-        currentSpeedKmh = currentSpeedSampleKmh
-        refreshElapsedAndAverage(at: location.timestamp, currentSpeedSampleKmh: currentSpeedSampleKmh)
+        let displayedCurrentSpeedKmh = resolvedCurrentSpeed(
+            rawSpeedKmh: rawSpeedKmh,
+            smoothedSpeedKmh: currentSpeedSampleKmh,
+            horizontalAccuracy: location.horizontalAccuracy
+        )
+        currentSpeedKmh = displayedCurrentSpeedKmh
+        refreshElapsedAndAverage(at: location.timestamp, currentSpeedSampleKmh: displayedCurrentSpeedKmh)
 
 #if DEBUG
         debugLogAverage(
@@ -500,7 +513,7 @@ private extension SpeedTracker {
             sessionSeconds: elapsed,
             horizontalAccuracy: location.horizontalAccuracy,
             gpsSpeedKmh: rawSpeedKmh,
-            currentSpeedKmh: currentSpeedSampleKmh,
+            currentSpeedKmh: displayedCurrentSpeedKmh,
             averageSpeedKmh: averageSpeedKmh,
             seedKmh: initialSpeedSeedKmh
         )
@@ -542,6 +555,27 @@ private extension SpeedTracker {
         if !isGpsFresh {
             isGpsWeak = false
         }
+    }
+
+    func startupSpeedSeed(rawSpeedKmh: Double, horizontalAccuracy: CLLocationAccuracy) -> Double? {
+        guard horizontalAccuracy >= 0, horizontalAccuracy <= maxHorizontalAccuracyForInitialDistance else {
+            return nil
+        }
+        guard rawSpeedKmh > 0, rawSpeedKmh <= maxInitialSegmentSpeedKmh else {
+            return nil
+        }
+        return rawSpeedKmh
+    }
+
+    func resolvedCurrentSpeed(
+        rawSpeedKmh: Double,
+        smoothedSpeedKmh: Double,
+        horizontalAccuracy: CLLocationAccuracy
+    ) -> Double {
+        guard hasReliableDistanceSample else {
+            return startupSpeedSeed(rawSpeedKmh: rawSpeedKmh, horizontalAccuracy: horizontalAccuracy) ?? 0
+        }
+        return max(smoothedSpeedKmh, 0)
     }
 
     func applyDistanceSample(
