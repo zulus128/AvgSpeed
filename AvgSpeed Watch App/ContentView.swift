@@ -20,6 +20,7 @@ struct ContentView: View {
     @State private var showsVersionInfo = false
     @State private var showsDiagnostics = false
     @State private var unitLongPressTriggered = false
+    @State private var lastDistanceStallAlertToken: UInt = 0
     @FocusState private var isLimitCrownFocused: Bool
 
     private let buttonHitTarget: CGFloat = 48
@@ -286,11 +287,15 @@ struct ContentView: View {
         .onAppear {
             tracker.prepare()
             wasOverLimit = false
+            lastDistanceStallAlertToken = tracker.distanceStallAlertToken
             syncCrownLimit()
             isLimitCrownFocused = true
         }
         .onReceive(tracker.$averageSpeedKmh) { _ in
             evaluateLimitHaptics()
+        }
+        .onReceive(tracker.$distanceStallAlertToken) { token in
+            playDistanceStallHapticIfNeeded(for: token)
         }
         .onChange(of: speedLimitKmh) { _, _ in
             evaluateLimitHaptics()
@@ -444,6 +449,12 @@ struct ContentView: View {
             WKInterfaceDevice.current().play(.notification)
         }
         wasOverLimit = over
+    }
+
+    private func playDistanceStallHapticIfNeeded(for token: UInt) {
+        guard token != lastDistanceStallAlertToken else { return }
+        lastDistanceStallAlertToken = token
+        WKInterfaceDevice.current().play(.retry)
     }
 
     private func roundUp(_ value: Double, step: Double) -> Double {

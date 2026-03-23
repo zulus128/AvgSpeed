@@ -29,6 +29,7 @@ final class SpeedTracker: NSObject, ObservableObject {
     @Published private(set) var isGpsFresh = false
     @Published private(set) var isGpsWeak = false
     @Published private(set) var distanceKm: Double = 0
+    @Published private(set) var distanceStallAlertToken: UInt = 0
     @Published private(set) var elapsed: TimeInterval = 0
     @Published private(set) var authorizationStatus: CLAuthorizationStatus = .notDetermined
     @Published var statusMessage: String?
@@ -50,10 +51,13 @@ final class SpeedTracker: NSObject, ObservableObject {
     private var startDate: Date?
     private var timer: Timer?
     private var lastGpsUpdate: Date?
+    private var lastDistanceIncreaseAt: Date?
+    private var hasTriggeredDistanceStallAlert = false
     private var pendingStartAfterAuth = false
     private var pendingStartAfterWorkoutEnd = false
 
     private let startupWarmupDuration: TimeInterval = 2
+    private let distanceStallAlertThreshold: TimeInterval = 20
     private let maxAcceptedLocationAge: TimeInterval = 10
     private let maxHorizontalAccuracyForSpeedSmoothing: CLLocationAccuracy = 200
     private let maxHorizontalAccuracyForInitialDistance: CLLocationAccuracy = 100
@@ -363,6 +367,8 @@ private extension SpeedTracker {
         startDate = nil
         ignoreLocationUpdatesUntil = nil
         hasReliableDistanceSample = false
+        lastDistanceIncreaseAt = nil
+        hasTriggeredDistanceStallAlert = false
         isGpsFresh = false
         isGpsWeak = false
         lastGpsUpdate = nil
@@ -376,6 +382,7 @@ private extension SpeedTracker {
                 let now = Date()
                 refreshElapsedAndAverage(at: now)
                 updateGpsFreshness(now: now)
+                evaluateDistanceStall(now: now)
 #if DEBUG
                 tickSimulatedMotion(now: now)
 #endif
@@ -557,6 +564,31 @@ private extension SpeedTracker {
         }
     }
 
+    func evaluateDistanceStall(now: Date) {
+        guard isTracking,
+              hasReliableDistanceSample,
+              let lastDistanceIncreaseAt else {
+            hasTriggeredDistanceStallAlert = false
+            return
+        }
+
+        guard now.timeIntervalSince(lastDistanceIncreaseAt) >= distanceStallAlertThreshold else {
+            return
+        }
+
+        guard !hasTriggeredDistanceStallAlert else {
+            return
+        }
+
+        hasTriggeredDistanceStallAlert = true
+        distanceStallAlertToken &+= 1
+        recordDiagnostic(
+            "[SpeedTracker] Distance stalled while tracking " +
+            "stall_s=\(String(format: "%.1f", now.timeIntervalSince(lastDistanceIncreaseAt))) " +
+            "distance_km=\(String(format: "%.3f", distanceKm))"
+        )
+    }
+
     func startupSpeedSeed(rawSpeedKmh: Double, horizontalAccuracy: CLLocationAccuracy) -> Double? {
         guard horizontalAccuracy >= 0, horizontalAccuracy <= maxHorizontalAccuracyForInitialDistance else {
             return nil
@@ -594,6 +626,8 @@ private extension SpeedTracker {
         totalDistance += distanceMeters
         if distanceMeters > 0 {
             distanceElapsed += interval
+            lastDistanceIncreaseAt = anchor.addingTimeInterval(interval)
+            hasTriggeredDistanceStallAlert = false
         }
         distanceKm = totalDistance / 1000
     }
