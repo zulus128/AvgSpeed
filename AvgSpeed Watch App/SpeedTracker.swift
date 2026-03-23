@@ -62,7 +62,7 @@ final class SpeedTracker: NSObject, ObservableObject {
     private let minDistanceSampleInterval: TimeInterval = 1
     private let maxEstimatedDistanceInterval: TimeInterval = 5
     private let minGapBridgeInterval: TimeInterval = 15
-    private let maxGapBridgeInterval: TimeInterval = 300
+    private let maxGapBridgeInterval: TimeInterval = 600
     private let minEstimatedSpeedKmh: Double = 3
     private let maxEstimatedSpeedKmh: Double = 180
     private let maxInitialSegmentSpeedKmh: Double = 80
@@ -591,8 +591,10 @@ private extension SpeedTracker {
         if initialSpeedSeedKmh == nil {
             initialSpeedSeedKmh = max(seedKmh, 0)
         }
-        distanceElapsed += interval
         totalDistance += distanceMeters
+        if distanceMeters > 0 {
+            distanceElapsed += interval
+        }
         distanceKm = totalDistance / 1000
     }
 
@@ -626,8 +628,8 @@ private extension SpeedTracker {
         let sessionElapsed = max(date.timeIntervalSince(referenceStart), 0)
         elapsed = sessionElapsed
 
-        if hasReliableDistanceSample, sessionElapsed > 0 {
-            averageSpeedKmh = (totalDistance / sessionElapsed) * 3.6
+        if hasReliableDistanceSample, distanceElapsed > 0 {
+            averageSpeedKmh = (totalDistance / distanceElapsed) * 3.6
             return
         }
 
