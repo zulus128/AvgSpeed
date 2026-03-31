@@ -30,6 +30,9 @@ final class SpeedTracker: NSObject, ObservableObject {
     @Published private(set) var isGpsWeak = false
     @Published private(set) var distanceKm: Double = 0
     @Published private(set) var distanceStallAlertToken: UInt = 0
+    @Published private(set) var maxSpeedKmh: Double = 0
+    @Published private(set) var movingTime: TimeInterval = 0
+    @Published private(set) var stoppedTime: TimeInterval = 0
     @Published private(set) var elapsed: TimeInterval = 0
     @Published private(set) var authorizationStatus: CLAuthorizationStatus = .notDetermined
     @Published var statusMessage: String?
@@ -208,6 +211,9 @@ final class SpeedTracker: NSObject, ObservableObject {
     }
 
     func stopTracking(reason: StopReason) {
+        let stoppedAt = Date()
+        refreshElapsedAndAverage(at: stoppedAt, currentSpeedSampleKmh: currentSpeedKmh)
+        persistCompletedSessionIfNeeded(stoppedAt: stoppedAt)
         pendingStartAfterWorkoutEnd = false
         timer?.invalidate()
         timer = nil
@@ -313,13 +319,14 @@ extension SpeedTracker {
         lastGpsUpdate = now
 
         totalDistance += (simulatedSpeedKmh / 3.6) * dt
-        distanceKm = totalDistance / 1000
-
-        if elapsed > 0 {
-            averageSpeedKmh = (totalDistance / elapsed) * 3.6
-        } else {
-            averageSpeedKmh = 0
+        if simulatedSpeedKmh > 0 {
+            distanceElapsed += dt
+            lastDistanceIncreaseAt = now
+            hasTriggeredDistanceStallAlert = false
         }
+        distanceKm = totalDistance / 1000
+        updateMaxSpeed(with: simulatedSpeedKmh)
+        refreshElapsedAndAverage(at: now, currentSpeedSampleKmh: simulatedSpeedKmh)
 
         lastSimulationTick = now
         pushToComplicationIfNeeded()
@@ -332,6 +339,9 @@ extension SpeedTracker {
         tracker.currentSpeedKmh = 26.3
         tracker.gpsSpeedKmh = 25.9
         tracker.distanceKm = 3.42
+        tracker.maxSpeedKmh = 31.4
+        tracker.movingTime = 690
+        tracker.stoppedTime = 90
         tracker.elapsed = 780
         tracker.statusMessage = "Preview data"
         tracker.isGpsFresh = true
@@ -357,6 +367,9 @@ private extension SpeedTracker {
         averageSpeedKmh = 0
         currentSpeedKmh = 0
         gpsSpeedKmh = 0
+        maxSpeedKmh = 0
+        movingTime = 0
+        stoppedTime = 0
         initialSpeedSeedKmh = nil
         measurementStartDate = nil
         distanceElapsed = 0
@@ -423,8 +436,13 @@ private extension SpeedTracker {
             distanceKm = 0
             averageSpeedKmh = 0
             currentSpeedKmh = 0
+            maxSpeedKmh = 0
+            movingTime = 0
+            stoppedTime = 0
             initialSpeedSeedKmh = nil
             hasReliableDistanceSample = false
+            lastDistanceIncreaseAt = nil
+            hasTriggeredDistanceStallAlert = false
         }
 
         recentLocations.append(location)
@@ -510,6 +528,7 @@ private extension SpeedTracker {
             horizontalAccuracy: location.horizontalAccuracy
         )
         currentSpeedKmh = displayedCurrentSpeedKmh
+        updateMaxSpeed(with: displayedCurrentSpeedKmh)
         refreshElapsedAndAverage(at: location.timestamp, currentSpeedSampleKmh: displayedCurrentSpeedKmh)
 
 #if DEBUG
@@ -565,6 +584,11 @@ private extension SpeedTracker {
     }
 
     func evaluateDistanceStall(now: Date) {
+        guard isDistanceStallHapticsEnabled else {
+            hasTriggeredDistanceStallAlert = false
+            return
+        }
+
         guard isTracking,
               hasReliableDistanceSample,
               let lastDistanceIncreaseAt else {
@@ -587,6 +611,11 @@ private extension SpeedTracker {
             "stall_s=\(String(format: "%.1f", now.timeIntervalSince(lastDistanceIncreaseAt))) " +
             "distance_km=\(String(format: "%.3f", distanceKm))"
         )
+    }
+
+    var isDistanceStallHapticsEnabled: Bool {
+        SharedDefaults.store.bool(forKey: SharedDefaults.proUnlockedKey) &&
+        SharedDefaults.store.bool(forKey: SharedDefaults.distanceStallHapticsEnabledKey)
     }
 
     func startupSpeedSeed(rawSpeedKmh: Double, horizontalAccuracy: CLLocationAccuracy) -> Double? {
@@ -653,6 +682,10 @@ private extension SpeedTracker {
     }
 
     func refreshElapsedAndAverage(at date: Date, currentSpeedSampleKmh: Double? = nil) {
+        let trackingElapsed = sessionDuration(at: date)
+        movingTime = distanceElapsed
+        stoppedTime = max(trackingElapsed - movingTime, 0)
+
         guard let referenceStart = measurementStartDate ?? startDate else {
             elapsed = 0
             averageSpeedKmh = 0
@@ -674,6 +707,38 @@ private extension SpeedTracker {
         } else {
             averageSpeedKmh = 0
         }
+    }
+
+    func sessionDuration(at date: Date) -> TimeInterval {
+        guard let startDate else { return 0 }
+        return max(date.timeIntervalSince(startDate), 0)
+    }
+
+    func updateMaxSpeed(with sampleKmh: Double) {
+        maxSpeedKmh = max(maxSpeedKmh, max(sampleKmh, 0))
+    }
+
+    func persistCompletedSessionIfNeeded(stoppedAt: Date) {
+        let duration = sessionDuration(at: stoppedAt)
+        let moving = distanceElapsed
+        let stopped = max(duration - moving, 0)
+
+        guard duration > 0 else { return }
+        guard totalDistance > 0 || moving > 0 || maxSpeedKmh > 0 else { return }
+
+        SessionHistoryStore.shared.add(
+            SessionRecord(
+                id: UUID(),
+                startedAt: startDate ?? stoppedAt,
+                endedAt: stoppedAt,
+                duration: duration,
+                movingTime: moving,
+                stoppedTime: stopped,
+                distanceKm: totalDistance / 1000,
+                averageSpeedKmh: averageSpeedKmh,
+                maxSpeedKmh: maxSpeedKmh
+            )
+        )
     }
 
     #if DEBUG

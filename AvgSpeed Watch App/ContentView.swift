@@ -11,33 +11,49 @@ import WatchKit
 struct ContentView: View {
     @EnvironmentObject private var tracker: SpeedTracker
     @StateObject private var diagnostics = TrackerDiagnostics.shared
+    @StateObject private var historyStore = SessionHistoryStore.shared
+    @StateObject private var proStore = ProPurchaseStore.shared
 
     @AppStorage("speed_limit_kmh", store: SharedDefaults.store) private var speedLimitKmh: Double = 10
     @AppStorage("speed_unit", store: SharedDefaults.store) private var speedUnitRaw: String = SpeedUnit.kmh.rawValue
+    @AppStorage(SharedDefaults.proUnlockedKey, store: SharedDefaults.store) private var proUnlocked = false
+    @AppStorage(SharedDefaults.distanceStallHapticsEnabledKey, store: SharedDefaults.store) private var distanceStallHapticsEnabled = false
+    @AppStorage(SharedDefaults.gpsSignalHapticsEnabledKey, store: SharedDefaults.store) private var gpsSignalHapticsEnabled = false
+    @AppStorage(SharedDefaults.appThemeKey, store: SharedDefaults.store) private var appThemeRaw: String = AppTheme.ocean.rawValue
 
     @State private var wasOverLimit = false
     @State private var crownLimit: Double = 10
     @State private var showsVersionInfo = false
     @State private var showsDiagnostics = false
+    @State private var showsProSheet = false
+    @State private var showsHistory = false
     @State private var unitLongPressTriggered = false
     @State private var lastDistanceStallAlertToken: UInt = 0
+    @State private var gpsIssueWasActive = false
+    @State private var hasSeenGpsIssueDuringTracking = false
     @FocusState private var isLimitCrownFocused: Bool
 
     private let buttonHitTarget: CGFloat = 48
 
     private var speedUnit: SpeedUnit { SpeedUnit(rawValue: speedUnitRaw) ?? .kmh }
+    private var appTheme: AppTheme { AppTheme.resolved(rawValue: appThemeRaw, hasPro: proUnlocked) }
+    private var advancedGpsHapticsEnabled: Bool { proUnlocked && gpsSignalHapticsEnabled }
 
     private var limit: Double { max(speedUnit.speed(fromKmh: speedLimitKmh), 1) }
     private var averageSpeed: Double { max(speedUnit.speed(fromKmh: tracker.averageSpeedKmh), 0) }
     private var currentSpeed: Double { max(speedUnit.speed(fromKmh: tracker.currentSpeedKmh), 0) }
+    private var maxSpeed: Double { max(speedUnit.speed(fromKmh: tracker.maxSpeedKmh), 0) }
     // private var gpsSpeed: Double { max(speedUnit.speed(fromKmh: tracker.gpsSpeedKmh), 0) }
     private var distance: Double { max(speedUnit.distance(fromKm: tracker.distanceKm), 0) }
+    private var currentSpeedText: String { String(format: "%.1f %@", currentSpeed, speedUnit.speedLabel) }
+    private var distanceText: String { String(format: "%.2f %@", distance, speedUnit.distanceLabel) }
     private var appVersionText: String {
         let info = Bundle.main.infoDictionary
         let marketingVersion = (info?["CFBundleShortVersionString"] as? String) ?? "?"
         let buildVersion = (info?["CFBundleVersion"] as? String) ?? "?"
         return "v\(marketingVersion) (\(buildVersion))"
     }
+    private var diagnosticsButtonText: String { "Logs \(diagnostics.entries.count)" }
 
     private var crownLimitRange: ClosedRange<Double> {
         1...max(speedUnit.speed(fromKmh: 400), 1)
@@ -56,6 +72,7 @@ struct ContentView: View {
     private struct LayoutMetrics {
         let size: CGSize
         let safeAreaInsets: EdgeInsets
+        let hasProMetrics: Bool
 
         private let referenceSize = CGSize(width: 184, height: 224)
         private let baseGaugeSize: CGFloat = 132
@@ -86,9 +103,9 @@ struct ContentView: View {
         }
 
         var headerHeight: CGFloat { 28 * scale }
-        var gaugeSize: CGFloat { baseGaugeSize * gaugeScale }
-        var gaugeTopPadding: CGFloat { 13 * gaugeScale }
-        var gaugeBottomPadding: CGFloat { 10 * gaugeScale }
+        var gaugeSize: CGFloat { baseGaugeSize * gaugeScale * (hasProMetrics ? 0.90 : 1.0) }
+        var gaugeTopPadding: CGFloat { (hasProMetrics ? 8 : 13) * gaugeScale }
+        var gaugeBottomPadding: CGFloat { (hasProMetrics ? 4 : 10) * gaugeScale }
         var startStopButtonOffsetY: CGFloat { 18 * gaugeScale }
         var unitToggleButtonOffsetY: CGFloat { 19 * gaugeScale }
 
@@ -112,9 +129,8 @@ struct ContentView: View {
                     .frame(width: unitAreaWidth, height: 1)
                     .allowsHitTesting(false)
 
-                Color.clear
-                    .frame(width: timeReservedWidth, height: 1)
-                    .allowsHitTesting(false)
+                proHeaderButton
+                    .frame(width: timeReservedWidth, alignment: .trailing)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         }
@@ -162,11 +178,11 @@ struct ContentView: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let metrics = LayoutMetrics(size: proxy.size, safeAreaInsets: proxy.safeAreaInsets)
+            let metrics = LayoutMetrics(size: proxy.size, safeAreaInsets: proxy.safeAreaInsets, hasProMetrics: proUnlocked)
 
             ZStack {
                 LinearGradient(
-                    colors: [Color.black, Color.blue.opacity(0.25)],
+                    colors: appTheme.backgroundColors,
                     startPoint: .top,
                     endPoint: .bottom
                 )
@@ -184,6 +200,7 @@ struct ContentView: View {
                             isGpsFresh: tracker.isGpsFresh,
                             isGpsWeak: tracker.isGpsWeak,
                             unitLabel: speedUnit.speedLabel,
+                            theme: appTheme,
                             size: metrics.gaugeSize
                         )
                             .frame(maxWidth: .infinity, alignment: .center)
@@ -203,23 +220,7 @@ struct ContentView: View {
                     .padding(.bottom, metrics.gaugeBottomPadding)
 
                     VStack(spacing: 2) {
-                        HStack(alignment: .firstTextBaseline, spacing: 8) {
-                            Spacer(minLength: 0)
-                            Text("\(currentSpeed, format: .number.precision(.fractionLength(1))) \(speedUnit.speedLabel)")
-                                .font(.caption2)
-                                .foregroundStyle(.white.opacity(0.85))
-                                .monospacedDigit()
-                                .contentTransition(.numericText())
-                                .animation(.easeInOut(duration: 0.2), value: currentSpeed)
-
-                            Spacer(minLength: 0)
-
-                            Text(String(format: "%.2f %@", distance, speedUnit.distanceLabel))
-                                .font(.caption2)
-                                .foregroundStyle(.white.opacity(0.75))
-                                .monospacedDigit()
-                            Spacer(minLength: 0)
-                        }
+                        summaryMetricsRow
 
                         /*
                         Text("GPS \(gpsSpeed, format: .number.precision(.fractionLength(1))) \(speedUnit.speedLabel)")
@@ -229,6 +230,11 @@ struct ContentView: View {
                             .contentTransition(.numericText())
                             .animation(.easeInOut(duration: 0.2), value: gpsSpeed)
                         */
+
+                        if proUnlocked {
+                            proMetricsRow
+                                .padding(.top, 1)
+                        }
                     }
                     .padding(.bottom, 0)
 #if DEBUG
@@ -244,34 +250,7 @@ struct ContentView: View {
                 .offset(y: metrics.topRowAlignmentOffset)
                 .overlay(alignment: .top) {
                     if showsVersionInfo {
-                        VStack(spacing: 4) {
-                            Text(appVersionText)
-                                .font(.system(size: 11, weight: .semibold, design: .rounded))
-                                .foregroundStyle(.white.opacity(0.8))
-                                .monospacedDigit()
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(.black.opacity(0.3))
-                                .clipShape(Capsule())
-                                .overlay(Capsule().stroke(.white.opacity(0.15), lineWidth: 1))
-                                .accessibilityLabel("App version \(appVersionText)")
-
-                            Button(action: openDiagnostics) {
-                                Text("Logs \(diagnostics.entries.count)")
-                                    .font(.system(size: 10, weight: .semibold, design: .rounded))
-                                    .foregroundStyle(.white)
-                                    .monospacedDigit()
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 3)
-                                    .background(.black.opacity(0.4))
-                                    .clipShape(Capsule())
-                                    .overlay(Capsule().stroke(.white.opacity(0.18), lineWidth: 1))
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityHint("Opens saved diagnostics from standalone runs")
-                        }
-                        .padding(.top, metrics.headerHeight + 2)
-                        .transition(.opacity)
+                        versionInfoOverlay(topPadding: metrics.headerHeight + 2)
                     }
                 }
             }
@@ -280,22 +259,36 @@ struct ContentView: View {
                 debugPrintLayout(metrics, event: "onAppear")
             }
             .onChange(of: proxy.size) { _, _ in
-                debugPrintLayout(LayoutMetrics(size: proxy.size, safeAreaInsets: proxy.safeAreaInsets), event: "sizeChanged")
+                debugPrintLayout(LayoutMetrics(size: proxy.size, safeAreaInsets: proxy.safeAreaInsets, hasProMetrics: proUnlocked), event: "sizeChanged")
             }
 #endif
         }
         .onAppear {
             tracker.prepare()
+            normalizeProState()
             wasOverLimit = false
             lastDistanceStallAlertToken = tracker.distanceStallAlertToken
             syncCrownLimit()
             isLimitCrownFocused = true
+            evaluateGpsSignalHaptics()
+        }
+        .task {
+            await proStore.prepare()
         }
         .onReceive(tracker.$averageSpeedKmh) { _ in
             evaluateLimitHaptics()
         }
         .onReceive(tracker.$distanceStallAlertToken) { token in
             playDistanceStallHapticIfNeeded(for: token)
+        }
+        .onReceive(tracker.$isGpsFresh) { _ in
+            evaluateGpsSignalHaptics()
+        }
+        .onReceive(tracker.$isGpsWeak) { _ in
+            evaluateGpsSignalHaptics()
+        }
+        .onReceive(tracker.$distanceKm) { _ in
+            evaluateGpsSignalHaptics()
         }
         .onChange(of: speedLimitKmh) { _, _ in
             evaluateLimitHaptics()
@@ -310,6 +303,26 @@ struct ContentView: View {
                 forceReload: true
             )
         }
+        .onChange(of: proUnlocked) { _, _ in
+            normalizeProState()
+            evaluateGpsSignalHaptics()
+            ComplicationManager.shared.pushState(
+                averageSpeedKmh: tracker.averageSpeedKmh,
+                isRunning: tracker.isTracking,
+                forceReload: true
+            )
+        }
+        .onChange(of: appThemeRaw) { _, _ in
+            normalizeProState()
+            ComplicationManager.shared.pushState(
+                averageSpeedKmh: tracker.averageSpeedKmh,
+                isRunning: tracker.isTracking,
+                forceReload: true
+            )
+        }
+        .onChange(of: tracker.isTracking) { _, _ in
+            evaluateGpsSignalHaptics()
+        }
         .onChange(of: crownLimit) { _, newValue in
             let kmh = speedUnit.kmh(fromSpeed: newValue).clamped(to: 1...400)
             if abs(kmh - speedLimitKmh) >= 0.001 {
@@ -318,6 +331,18 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showsDiagnostics) {
             DiagnosticsLogView(diagnostics: diagnostics)
+        }
+        .sheet(isPresented: $showsProSheet) {
+            ProFeaturesView(
+                proStore: proStore,
+                proUnlocked: $proUnlocked,
+                distanceStallHapticsEnabled: $distanceStallHapticsEnabled,
+                gpsSignalHapticsEnabled: $gpsSignalHapticsEnabled,
+                selectedThemeRaw: $appThemeRaw
+            )
+        }
+        .sheet(isPresented: $showsHistory) {
+            SessionHistoryView(historyStore: historyStore, speedUnit: speedUnit, theme: appTheme)
         }
     }
 
@@ -339,6 +364,134 @@ struct ContentView: View {
         showsDiagnostics = true
     }
 
+    private var summaryMetricsRow: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Spacer(minLength: 0)
+
+            Text(currentSpeedText)
+                .font(.caption2)
+                .foregroundStyle(.white.opacity(0.85))
+                .monospacedDigit()
+                .contentTransition(.numericText())
+                .animation(.easeInOut(duration: 0.2), value: currentSpeed)
+
+            Spacer(minLength: 0)
+
+            Text(distanceText)
+                .font(.caption2)
+                .foregroundStyle(.white.opacity(0.75))
+                .monospacedDigit()
+
+            Spacer(minLength: 0)
+        }
+    }
+
+    @ViewBuilder
+    private func versionInfoOverlay(topPadding: CGFloat) -> some View {
+        VStack(spacing: 4) {
+            Text(appVersionText)
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white.opacity(0.8))
+                .monospacedDigit()
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(.black.opacity(0.3))
+                .clipShape(Capsule())
+                .overlay(Capsule().stroke(.white.opacity(0.15), lineWidth: 1))
+                .accessibilityLabel("App version \(appVersionText)")
+
+            HStack(spacing: 6) {
+                overlayActionButton(title: proUnlocked ? "Pro" : "Unlock", accent: appTheme.accentColor, action: openProSheet)
+                overlayActionButton(title: "History", accent: appTheme.secondaryAccentColor, action: openHistory)
+            }
+
+            diagnosticsButton
+        }
+        .padding(.top, topPadding)
+        .transition(.opacity)
+    }
+
+    private var diagnosticsButton: some View {
+        Button(action: openDiagnostics) {
+            Text(diagnosticsButtonText)
+                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white)
+                .monospacedDigit()
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(appTheme.panelFill)
+                .clipShape(Capsule())
+                .overlay(Capsule().stroke(appTheme.borderColor, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("Opens saved diagnostics from standalone runs")
+    }
+
+    private var proHeaderButton: some View {
+        Button(action: openProSheet) {
+            HStack(spacing: 3) {
+                if !proUnlocked {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 8, weight: .bold))
+                }
+
+                Text("PRO")
+                    .font(.system(size: 10, weight: .heavy, design: .rounded))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+            .foregroundStyle(.black.opacity(0.88))
+            .frame(maxWidth: .infinity)
+            .frame(height: 24)
+            .background {
+                if proUnlocked {
+                    appTheme.accentColor.opacity(0.96)
+                } else {
+                    LinearGradient(
+                        colors: [
+                            Color(red: 1.0, green: 0.84, blue: 0.36),
+                            Color(red: 1.0, green: 0.65, blue: 0.24)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                }
+            }
+            .clipShape(Capsule())
+            .overlay(Capsule().stroke(.white.opacity(0.22), lineWidth: 1))
+            .shadow(color: .black.opacity(0.22), radius: 2, y: 1)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(proUnlocked ? "Pro settings" : "Unlock Pro")
+        .accessibilityHint("Opens AvgSpeed Pro")
+    }
+
+    private func openProSheet() {
+        showsVersionInfo = false
+        showsProSheet = true
+    }
+
+    private func openHistory() {
+        showsVersionInfo = false
+        if proUnlocked {
+            showsHistory = true
+        } else {
+            showsProSheet = true
+        }
+    }
+
+    private func normalizeProState() {
+        let normalizedTheme = AppTheme.resolved(rawValue: appThemeRaw, hasPro: proUnlocked)
+        if normalizedTheme.rawValue != appThemeRaw {
+            appThemeRaw = normalizedTheme.rawValue
+        }
+
+        if !proUnlocked {
+            distanceStallHapticsEnabled = false
+            gpsSignalHapticsEnabled = false
+        }
+    }
+
     private var unitToggleButton: some View {
         Button(action: toggleUnit) {
             ZStack(alignment: .bottomTrailing) {
@@ -351,9 +504,9 @@ struct ContentView: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.6)
                     .frame(width: 32, height: 32)
-                    .background(.white.opacity(0.14))
+                    .background(appTheme.panelFill)
                     .clipShape(Circle())
-                    .overlay(Circle().stroke(.white.opacity(0.14), lineWidth: 1))
+                    .overlay(Circle().stroke(appTheme.borderColor, lineWidth: 1))
                     .contentShape(Circle())
             }
             .simultaneousGesture(
@@ -382,9 +535,9 @@ struct ContentView: View {
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(tracker.isTracking ? .red : .green)
                     .frame(width: 28, height: 28)
-                    .background(.white.opacity(0.14))
+                    .background(appTheme.panelFill)
                     .clipShape(Circle())
-                    .overlay(Circle().stroke(.white.opacity(0.14), lineWidth: 1))
+                    .overlay(Circle().stroke(appTheme.borderColor, lineWidth: 1))
                     .contentShape(Circle())
             }
         }
@@ -411,8 +564,8 @@ struct ContentView: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 1)
-        .background(isLimitCrownFocused ? .white.opacity(0.22) : .white.opacity(0.14))
-        .overlay(Capsule().stroke(isLimitCrownFocused ? .white.opacity(0.28) : .white.opacity(0.14), lineWidth: 1))
+        .background(isLimitCrownFocused ? appTheme.panelStrongFill : appTheme.panelFill)
+        .overlay(Capsule().stroke(isLimitCrownFocused ? appTheme.borderColor.opacity(1.0) : appTheme.borderColor, lineWidth: 1))
         .contentShape(Capsule())
         .focusable(true)
         .focused($isLimitCrownFocused)
@@ -454,12 +607,101 @@ struct ContentView: View {
     private func playDistanceStallHapticIfNeeded(for token: UInt) {
         guard token != lastDistanceStallAlertToken else { return }
         lastDistanceStallAlertToken = token
+        guard proUnlocked && distanceStallHapticsEnabled else { return }
         WKInterfaceDevice.current().play(.retry)
+    }
+
+    private func evaluateGpsSignalHaptics() {
+        guard advancedGpsHapticsEnabled else {
+            gpsIssueWasActive = false
+            hasSeenGpsIssueDuringTracking = false
+            return
+        }
+
+        guard tracker.isTracking else {
+            gpsIssueWasActive = false
+            hasSeenGpsIssueDuringTracking = false
+            return
+        }
+
+        let issueActive = !tracker.isGpsFresh || tracker.isGpsWeak
+
+        guard tracker.distanceKm > 0.05 else {
+            gpsIssueWasActive = issueActive
+            hasSeenGpsIssueDuringTracking = false
+            return
+        }
+
+        if issueActive && !gpsIssueWasActive {
+            WKInterfaceDevice.current().play(.failure)
+            hasSeenGpsIssueDuringTracking = true
+        } else if !issueActive && gpsIssueWasActive && hasSeenGpsIssueDuringTracking {
+            WKInterfaceDevice.current().play(.success)
+        }
+
+        gpsIssueWasActive = issueActive
+    }
+
+    private var proMetricsRow: some View {
+        HStack(spacing: 4) {
+            liveMetricCapsule(title: "MAX", value: String(format: "%.1f", maxSpeed))
+            liveMetricCapsule(title: "MOVE", value: formatMetricDuration(tracker.movingTime))
+            liveMetricCapsule(title: "STOP", value: formatMetricDuration(tracker.stoppedTime))
+        }
+    }
+
+    private func liveMetricCapsule(title: String, value: String) -> some View {
+        VStack(spacing: 0) {
+            Text(title)
+                .font(.system(size: 7, weight: .bold, design: .rounded))
+                .foregroundStyle(appTheme.secondaryAccentColor.opacity(0.88))
+            Text(value)
+                .font(.system(size: 9, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white.opacity(0.92))
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 2.5)
+        .padding(.horizontal, 3)
+        .background(appTheme.panelFill)
+        .clipShape(Capsule())
+        .overlay(Capsule().stroke(appTheme.borderColor, lineWidth: 1))
+    }
+
+    private func overlayActionButton(title: String, accent: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 11, weight: .bold, design: .rounded))
+                .foregroundStyle(.black.opacity(0.88))
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .background(accent.opacity(0.95))
+                .clipShape(Capsule())
+                .overlay(Capsule().stroke(.white.opacity(0.22), lineWidth: 1))
+                .shadow(color: .black.opacity(0.28), radius: 2, y: 1)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func formatMetricDuration(_ duration: TimeInterval) -> String {
+        Self.metricDurationFormatter.string(from: duration) ?? "0:00"
     }
 
     private func roundUp(_ value: Double, step: Double) -> Double {
         (value / step).rounded(.up) * step
     }
+
+    private static let metricDurationFormatter: DateComponentsFormatter = {
+        let formatter = DateComponentsFormatter()
+        formatter.allowedUnits = [.hour, .minute, .second]
+        formatter.unitsStyle = .positional
+        formatter.zeroFormattingBehavior = [.pad]
+        return formatter
+    }()
 }
 
 private struct DiagnosticsLogView: View {
@@ -511,7 +753,7 @@ private struct DiagnosticsLogView: View {
     }
 }
 
-private enum SpeedUnit: String {
+enum SpeedUnit: String {
     case kmh
     case mph
 
@@ -572,6 +814,7 @@ private struct SpeedGauge: View {
     let isGpsFresh: Bool
     let isGpsWeak: Bool
     let unitLabel: String
+    let theme: AppTheme
     let size: CGFloat
 
     @State private var blink = false
@@ -584,10 +827,10 @@ private struct SpeedGauge: View {
 
         return AngularGradient(
             gradient: Gradient(stops: [
-                .init(color: .green.opacity(0.75), location: 0.0),
-                .init(color: .green.opacity(0.75), location: left),
-                .init(color: .red.opacity(0.75), location: right),
-                .init(color: .red.opacity(0.75), location: 1.0),
+                .init(color: theme.gaugeSafeColor.opacity(0.85), location: 0.0),
+                .init(color: theme.gaugeSafeColor.opacity(0.85), location: left),
+                .init(color: theme.gaugeAlertColor.opacity(0.88), location: right),
+                .init(color: theme.gaugeAlertColor.opacity(0.88), location: 1.0),
             ]),
             center: .center,
             startAngle: .degrees(-90),
@@ -597,9 +840,9 @@ private struct SpeedGauge: View {
 
     private var gpsIndicatorColor: Color {
         if !isGpsFresh {
-            return .red
+            return theme.gaugeAlertColor
         }
-        return isGpsWeak ? .orange : .green
+        return isGpsWeak ? theme.secondaryAccentColor : theme.gaugeSafeColor
     }
 
     var body: some View {
@@ -614,7 +857,7 @@ private struct SpeedGauge: View {
 
         ZStack {
             Circle()
-                .stroke(Color.white.opacity(0.08), lineWidth: strokeWidth)
+                .stroke(theme.borderColor.opacity(0.55), lineWidth: strokeWidth)
 
             Circle()
                 .stroke(style: StrokeStyle(lineWidth: strokeWidth, lineCap: .round))
@@ -622,17 +865,17 @@ private struct SpeedGauge: View {
                 .opacity(0.9)
 
             Capsule()
-                .fill(.white.opacity(0.65))
+                .fill(theme.accentColor.opacity(0.92))
                 .frame(width: needleWidth, height: needleHeight)
                 .offset(y: -(needleHeight / 2))
                 .rotationEffect(.degrees(needleFraction.clamped(to: 0...1) * 360))
-                .shadow(color: .white.opacity(0.25), radius: 1)
+                .shadow(color: theme.accentColor.opacity(0.30), radius: 1)
                 .animation(.easeInOut(duration: 0.2), value: needleFraction)
 
             Circle()
                 .fill(.black.opacity(0.85))
                 .frame(width: hubSize, height: hubSize)
-                .overlay(Circle().stroke(Color.white.opacity(0.25), lineWidth: 1))
+                .overlay(Circle().stroke(theme.borderColor, lineWidth: 1))
 
             VStack(spacing: 0) {
                 HStack(alignment: .firstTextBaseline, spacing: 1) {
@@ -654,7 +897,7 @@ private struct SpeedGauge: View {
                 HStack(alignment: .center, spacing: 4) {
                     Text(unitLabel)
                         .font(.caption2)
-                        .foregroundStyle(.white.opacity(0.75))
+                        .foregroundStyle(theme.secondaryAccentColor.opacity(0.9))
 
                     Circle()
                         .fill(gpsIndicatorColor)

@@ -21,6 +21,7 @@ private enum SharedComplicationDefaults {
     static let averageKey = "latestAverageSpeedKmh"
     static let runningKey = "isTracking"
     static let speedUnitKey = "speed_unit"
+    static let themeKey = "app_theme"
 }
 
 private enum ComplicationSpeedUnit: String {
@@ -55,11 +56,40 @@ private enum ComplicationSpeedUnit: String {
     }
 }
 
+private enum ComplicationTheme: String {
+    case ocean
+    case ember
+    case volt
+
+    var accentColor: Color {
+        switch self {
+        case .ocean:
+            return Color(red: 0.43, green: 0.86, blue: 1.0)
+        case .ember:
+            return Color(red: 1.0, green: 0.72, blue: 0.34)
+        case .volt:
+            return Color(red: 0.72, green: 1.0, blue: 0.44)
+        }
+    }
+
+    var secondaryColor: Color {
+        switch self {
+        case .ocean:
+            return Color(red: 0.61, green: 0.83, blue: 1.0)
+        case .ember:
+            return Color(red: 1.0, green: 0.56, blue: 0.48)
+        case .volt:
+            return Color(red: 0.58, green: 1.0, blue: 0.82)
+        }
+    }
+}
+
 private struct AvgSpeedComplicationEntry: TimelineEntry {
     let date: Date
     let isRunning: Bool
     let displaySpeed: Double
     let unit: ComplicationSpeedUnit
+    let theme: ComplicationTheme
 
     var valueText: String {
         isRunning ? String(format: "%.1f", displaySpeed) : "-"
@@ -81,7 +111,8 @@ private struct AvgSpeedComplicationProvider: TimelineProvider {
             date: Date(),
             isRunning: true,
             displaySpeed: 12.5,
-            unit: .kmh
+            unit: .kmh,
+            theme: .ocean
         )
     }
 
@@ -109,16 +140,19 @@ private struct AvgSpeedComplicationProvider: TimelineProvider {
         let isRunning = defaults.bool(forKey: SharedComplicationDefaults.runningKey)
         let unitRaw = defaults.string(forKey: SharedComplicationDefaults.speedUnitKey) ?? ComplicationSpeedUnit.kmh.rawValue
         let unit = ComplicationSpeedUnit(rawValue: unitRaw) ?? .kmh
+        let themeRaw = defaults.string(forKey: SharedComplicationDefaults.themeKey) ?? ComplicationTheme.ocean.rawValue
+        let theme = ComplicationTheme(rawValue: themeRaw) ?? .ocean
         let displaySpeed = unit.speed(fromKmh: averageSpeedKmh)
         complicationLogger.notice(
-            "loadEntry avgKmh=\(averageSpeedKmh, format: .fixed(precision: 1)) running=\(isRunning, privacy: .public) unit=\(unit.rawValue, privacy: .public)"
+            "loadEntry avgKmh=\(averageSpeedKmh, format: .fixed(precision: 1)) running=\(isRunning, privacy: .public) unit=\(unit.rawValue, privacy: .public) theme=\(theme.rawValue, privacy: .public)"
         )
 
         return AvgSpeedComplicationEntry(
             date: date,
             isRunning: isRunning,
             displaySpeed: displaySpeed,
-            unit: unit
+            unit: unit,
+            theme: theme
         )
     }
 }
@@ -153,27 +187,33 @@ private struct AvgSpeedComplicationView: View {
         switch family {
         case .accessoryInline:
             Text(entry.inlineText)
+                .foregroundStyle(entry.theme.accentColor)
         case .accessoryCircular:
             VStack(spacing: 0) {
                 Text(entry.valueText)
                     .font(.headline)
+                    .foregroundStyle(entry.theme.accentColor)
                 Text(entry.unit.shortLabel)
                     .font(.caption2)
+                    .foregroundStyle(entry.theme.secondaryColor)
             }
         case .accessoryCorner:
             Text(entry.valueText)
                 .widgetCurvesContent()
+                .foregroundStyle(entry.theme.accentColor)
         case .accessoryRectangular:
             VStack(alignment: .leading, spacing: 2) {
                 Text("Average Speed")
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(entry.theme.secondaryColor)
                 Text(entry.speedWithUnit)
                     .font(.headline)
                     .monospacedDigit()
+                    .foregroundStyle(entry.theme.accentColor)
             }
         @unknown default:
             Text(entry.inlineText)
+                .foregroundStyle(entry.theme.accentColor)
         }
     }
 }

@@ -29,6 +29,11 @@ enum SharedDefaults {
             "avgSpeedUpdatedAt",
             "avgSpeedLastComplicationReloadAt",
             "avgSpeedLastWidgetReloadAt",
+            SharedDefaults.proUnlockedKey,
+            SharedDefaults.distanceStallHapticsEnabledKey,
+            SharedDefaults.gpsSignalHapticsEnabledKey,
+            SharedDefaults.appThemeKey,
+            SharedDefaults.sessionHistoryKey,
         ]
 
         for key in keysToMigrate where shared.object(forKey: key) == nil {
