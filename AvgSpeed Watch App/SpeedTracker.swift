@@ -72,10 +72,11 @@ final class SpeedTracker: NSObject, ObservableObject {
     private let maxGapBridgeInterval: TimeInterval = 600
     private let minEstimatedSpeedKmh: Double = 3
     private let maxEstimatedSpeedKmh: Double = 180
-    private let maxInitialSegmentSpeedKmh: Double = 80
+    private let maxInitialSegmentSpeedKmh: Double = 180
     private let maxSegmentSpeedKmh: Double = 300
     private var ignoreLocationUpdatesUntil: Date?
     private var hasReliableDistanceSample = false
+    private var hasLoggedInitialSegmentSpeedRejection = false
 
     private let speedSmoothingWindow: TimeInterval = 8
     private var recentLocations: [CLLocation] = []
@@ -380,6 +381,7 @@ private extension SpeedTracker {
         startDate = nil
         ignoreLocationUpdatesUntil = nil
         hasReliableDistanceSample = false
+        hasLoggedInitialSegmentSpeedRejection = false
         lastDistanceIncreaseAt = nil
         hasTriggeredDistanceStallAlert = false
         isGpsFresh = false
@@ -484,6 +486,24 @@ private extension SpeedTracker {
                 last.horizontalAccuracy <= maxHorizontalAccuracyForInitialDistance
             let isLongGapBridge = interval >= minGapBridgeInterval
             let maxAcceptedSegmentSpeedKmh = hasReliableDistanceSample ? maxSegmentSpeedKmh : maxInitialSegmentSpeedKmh
+
+            if !hasReliableDistanceSample,
+               !hasLoggedInitialSegmentSpeedRejection,
+               interval >= minDistanceSampleInterval,
+               distance >= 0,
+               hasReliableAccuracyPair,
+               hasReliableInitialAccuracyPair,
+               segmentSpeed > maxAcceptedSegmentSpeedKmh {
+                hasLoggedInitialSegmentSpeedRejection = true
+                recordDiagnostic(
+                    "[SpeedTracker] Initial distance sample rejected " +
+                    "segment_kmh=\(String(format: "%.3f", segmentSpeed)) " +
+                    "limit_kmh=\(String(format: "%.1f", maxAcceptedSegmentSpeedKmh)) " +
+                    "distance_m=\(String(format: "%.2f", distance)) " +
+                    "interval_s=\(String(format: "%.3f", interval)) " +
+                    "gps_kmh=\(String(format: "%.3f", rawSpeedKmh))"
+                )
+            }
 
             if interval >= minDistanceSampleInterval,
                distance >= 0,
